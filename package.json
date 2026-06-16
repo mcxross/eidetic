@@ -1,0 +1,33 @@
+{
+  "name": "eidetic-mcp",
+  "version": "0.0.1",
+  "description": "Eidetic — Agentic Memory MCP Server",
+  "author": "McXross",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mcxross/eidetic.git"
+  },
+  "type": "module",
+  "keywords": [
+    "mcp",
+    "ai",
+    "memory",
+    "eidetic"
+  ],
+  "bin": {
+    "eidetic": "bin/eidetic.js",
+    "eidetic-mcp": "bin/eidetic.js"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

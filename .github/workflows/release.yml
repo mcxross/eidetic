@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-binaries:
+    name: Build release binaries
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: eidetic-linux-amd64.tar.gz
+            arch: x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: eidetic-linux-arm64.tar.gz
+            arch: aarch64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: eidetic-darwin-amd64.tar.gz
+            arch: x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: eidetic-darwin-arm64.tar.gz
+            arch: aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: eidetic-windows-amd64.zip
+            arch: x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-release-cargo-${{ matrix.target }}-${{ hashFiles('Cargo.toml') }}
+
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1.0.7
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+          target: ${{ matrix.target }}
+
+      - name: Build Eidetic
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target ${{ matrix.target }}
+          use-cross: ${{ matrix.os == 'ubuntu-latest' }}
+
+      - name: Prepare artifact [Windows]
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../${{ matrix.name }} eidetic.exe
+
+      - name: Prepare artifact [Linux & macOS]
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          strip eidetic || true
+          tar czvf ../../../${{ matrix.name }} eidetic
+
+      - name: Upload artifact to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.name }}
+
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - build-binaries
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate release tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${RELEASE_TAG#v}"
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Release tag ($RELEASE_TAG) does not match package.json version ($PACKAGE_VERSION)."
+            exit 1
+          fi
+
+      - name: Pack npm tarball
+        run: npm pack
+
+      - name: Upload tarball to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: eidetic-mcp-*.tgz
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
