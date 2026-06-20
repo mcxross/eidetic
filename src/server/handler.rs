@@ -278,7 +278,7 @@ impl ServerHandler for EideticServer {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
                 name: "eidetic-mcp-server".into(),
-                version: "0.1.0".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
                 title: None,
                 description: Some(
                     "Eidetic MCP Server - Memory management for agentic workflows".into(),
