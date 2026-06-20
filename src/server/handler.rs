@@ -1,8 +1,10 @@
 use rmcp::{
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ErrorData as McpError, ServerCapabilities, ServerInfo, Implementation},
-    tool, tool_handler, tool_router,
     ServerHandler,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{
+        CallToolResult, ErrorData as McpError, Implementation, ServerCapabilities, ServerInfo,
+    },
+    tool, tool_handler, tool_router,
 };
 
 use crate::storage::MemoryStore;
@@ -29,6 +31,9 @@ pub struct EideticServer {
     mem_merge_projects: MemMergeProjects,
     mem_current_project: MemCurrentProject,
     mem_doctor: MemDoctor,
+    mem_sui_accounts: MemSuiAccounts,
+    mem_select_sui_account: MemSelectSuiAccount,
+    mem_memwal_config: MemMemwalConfig,
     mem_review: MemReview,
     mem_judge: MemJudge,
     mem_compare: MemCompare,
@@ -55,6 +60,9 @@ impl EideticServer {
             mem_merge_projects: MemMergeProjects::new(store.clone()),
             mem_current_project: MemCurrentProject::new(store.clone()),
             mem_doctor: MemDoctor::new(store.clone()),
+            mem_sui_accounts: MemSuiAccounts::new(store.clone()),
+            mem_select_sui_account: MemSelectSuiAccount::new(store.clone()),
+            mem_memwal_config: MemMemwalConfig::new(store.clone()),
             mem_review: MemReview::new(store.clone()),
             mem_judge: MemJudge::new(store.clone()),
             mem_compare: MemCompare::new(store.clone()),
@@ -65,7 +73,9 @@ impl EideticServer {
 
 #[tool_router]
 impl EideticServer {
-    #[tool(description = "Save a structured observation (decision, bugfix, pattern, etc.); best-effort captures process-local current prompt context when available unless capture_prompt=false")]
+    #[tool(
+        description = "Save a structured observation (decision, bugfix, pattern, etc.); best-effort captures process-local current prompt context when available unless capture_prompt=false"
+    )]
     async fn mem_save(
         &self,
         params: Parameters<crate::tools::core::mem_save::MemSaveParams>,
@@ -94,7 +104,9 @@ impl EideticServer {
         &self,
         params: Parameters<crate::tools::core::mem_suggest_topic_key::MemSuggestTopicKeyParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.mem_suggest_topic_key.mem_suggest_topic_key(params).await
+        self.mem_suggest_topic_key
+            .mem_suggest_topic_key(params)
+            .await
     }
 
     #[tool(description = "Full-text search across all memories")]
@@ -185,7 +197,9 @@ impl EideticServer {
         self.mem_capture_passive.mem_capture_passive(params).await
     }
 
-    #[tool(description = "List observations whose review_after lifecycle is stale; mark_reviewed resets the local review cycle")]
+    #[tool(
+        description = "List observations whose review_after lifecycle is stale; mark_reviewed resets the local review cycle"
+    )]
     async fn mem_review(
         &self,
         params: Parameters<crate::tools::advanced::mem_review::MemReviewParams>,
@@ -217,12 +231,42 @@ impl EideticServer {
         self.mem_stats.mem_stats(params).await
     }
 
-    #[tool(description = "Run read-only operational diagnostics for project detection and store health")]
+    #[tool(
+        description = "Run read-only operational diagnostics for project detection and store health"
+    )]
     async fn mem_doctor(
         &self,
         params: Parameters<crate::tools::utility::mem_doctor::MemDoctorParams>,
     ) -> Result<CallToolResult, McpError> {
         self.mem_doctor.mem_doctor(params).await
+    }
+
+    #[tool(description = "List Sui accounts available from ~/.sui for Memwal operations")]
+    async fn mem_sui_accounts(
+        &self,
+        params: Parameters<crate::tools::utility::mem_sui_accounts::MemSuiAccountsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.mem_sui_accounts.mem_sui_accounts(params).await
+    }
+
+    #[tool(description = "Select the Sui account used by Memwal operations")]
+    async fn mem_select_sui_account(
+        &self,
+        params: Parameters<
+            crate::tools::utility::mem_select_sui_account::MemSelectSuiAccountParams,
+        >,
+    ) -> Result<CallToolResult, McpError> {
+        self.mem_select_sui_account
+            .mem_select_sui_account(params)
+            .await
+    }
+
+    #[tool(description = "Show redacted Memwal account and backend configuration")]
+    async fn mem_memwal_config(
+        &self,
+        params: Parameters<crate::tools::utility::mem_memwal_config::MemMemwalConfigParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.mem_memwal_config.mem_memwal_config(params).await
     }
 }
 
@@ -231,18 +275,20 @@ impl ServerHandler for EideticServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: rmcp::model::ProtocolVersion::V_2025_06_18,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
                 name: "eidetic-mcp-server".into(),
                 version: "0.1.0".into(),
                 title: None,
-                description: Some("Eidetic MCP Server - Memory management for agentic workflows".into()),
+                description: Some(
+                    "Eidetic MCP Server - Memory management for agentic workflows".into(),
+                ),
                 icons: None,
                 website_url: None,
             },
-            instructions: Some("Eidetic MCP Server handles project memory and observation storage.".into()),
+            instructions: Some(
+                "Eidetic MCP Server handles project memory and observation storage.".into(),
+            ),
         }
     }
 }
