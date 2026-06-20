@@ -1,0 +1,4 @@
+interface:
+  display_name: "Install Eidetic"
+  short_description: "Install and configure Eidetic MCP"
+  default_prompt: "Use $install-eidetic to install Eidetic and configure it for my MCP client."
