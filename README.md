@@ -48,6 +48,14 @@ cd eidetic
 cargo install --path .
 ```
 
+### 3. Updating Eidetic
+Eidetic includes a built-in native self-updater. To fetch the latest optimized release binary from GitHub and replace your current executable in-place:
+
+```bash
+eidetic update
+```
+*(Note: If installed via NPM, you can also use `npm update -g eidetic-mcp`, but `eidetic update` is the fastest way to get the latest native patch).*
+
 ---
 
 ## Agent Integration
@@ -75,6 +83,14 @@ eidetic setup cursor
 ```
 This will automatically parse your `~/.cursor/mcp.json` file, safely merge Eidetic as an available MCP server, and point the agent to the exact Eidetic executable path.
 
+### Memwal Provisioning
+To completely automate the creation, registration, and funding of a Memwal backend account on the Sui network, use:
+
+```bash
+eidetic setup memwal
+```
+This guides the user and agent through generating an identity and polling for gas to provision the registry.
+
 ---
 
 ## Features
@@ -85,6 +101,14 @@ Start the MCP server manually (usually handled automatically by your agent):
 eidetic serve
 ```
 By default, the server uses a SQLite database to store memories locally.
+
+### Configuration
+Eidetic persists its configuration in `~/.eidetic/config.toml`. This includes your storage backend preferences, custom paths, and Memwal configurations.
+
+You can view the active configuration and backend details via:
+```bash
+eidetic info
+```
 
 ---
 
@@ -241,6 +265,7 @@ Eidetic exposes the following MCP tools to connected agents.
 | --- | --- |
 | `mem_stats` | Return memory system statistics for a project |
 | `mem_doctor` | Run read-only diagnostics for project detection and storage health |
+| `eidetic_status` | Return server health, current config, and actionable Memwal gas errors |
 
 ### Memwal Account Tools
 
