@@ -28,7 +28,7 @@ impl MemwalStorage {
         let client = self.auth.memwal_client().await?;
         let payload = observation_payload(obs)?;
         client
-            .remember_and_wait(
+            .remember(
                 &payload,
                 Duration::from_millis(1500),
                 Duration::from_secs(60),
