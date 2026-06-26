@@ -31,3 +31,4 @@ crossterm = "0.28"
 toml_edit = "0.22"
 memwal-core = { package = "memwal-core", git = "https://github.com/mcxross/memwal-rs.git", rev = "06fd5c1" }
 allocative = "=0.3.4"
+self_update = { version = "0.44.0", features = ["archive-tar", "compression-flate2"] }

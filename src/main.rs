@@ -13,6 +13,7 @@ mod setup;
 mod storage;
 mod tools;
 mod tui;
+mod update;
 
 use server::EideticServer;
 
@@ -64,6 +65,7 @@ enum Commands {
     Serve,
     Tui,
     Setup { agent: String },
+    Update,
     Info,
 }
 
@@ -155,6 +157,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Tui => run_tui(backend, storage_path, auth_config).await,
         Commands::Setup { agent } => setup::run(&agent).await,
+        Commands::Update => update::update().await,
         Commands::Info => run_info(config).await,
     };
 
