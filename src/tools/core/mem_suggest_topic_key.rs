@@ -1,13 +1,12 @@
+use crate::memory::types::*;
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::memory::types::*;
-use crate::storage::MemoryStore;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemSuggestTopicKeyParams {
@@ -35,15 +34,29 @@ impl MemSuggestTopicKey {
         Parameters(params): Parameters<MemSuggestTopicKeyParams>,
     ) -> Result<CallToolResult, McpError> {
         let project = if let Some(pid) = params.project_id {
-            self.store.storage().get_project(&pid).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| McpError::invalid_params(format!("Project not found: {}", pid), None))?
+            self.store
+                .storage()
+                .get_project(&pid)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params(format!("Project not found: {}", pid), None)
+                })?
         } else {
-            self.store.get_or_create_project(None).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
+            self.store
+                .get_or_create_project(None)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
         let project_id = project.id.clone();
 
-        let observations = self.store.storage().list_observations(&project_id).await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let observations = self
+            .store
+            .storage()
+            .list_observations(&project_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let existing_topics: Vec<TopicKey> = observations
             .iter()
             .filter_map(|o| o.topic_key.clone())
@@ -52,7 +65,7 @@ impl MemSuggestTopicKey {
             .collect();
 
         let suggested_key = self.extract_topic_key(&params.content);
-        
+
         let mut similar = Vec::new();
         for topic in &existing_topics {
             let similarity = self.calculate_similarity(&suggested_key, topic);
@@ -60,7 +73,7 @@ impl MemSuggestTopicKey {
                 similar.push((topic.clone(), similarity));
             }
         }
-        
+
         similar.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         let similar_topics: Vec<TopicKey> = similar.into_iter().take(5).map(|(t, _)| t).collect();
 
@@ -73,7 +86,11 @@ impl MemSuggestTopicKey {
             reasoning: format!(
                 "Extracted key terms from content: '{}'. Similar existing topics: {}",
                 self.extract_key_terms(&params.content).join(", "),
-                if existing_topics.is_empty() { "none".to_string() } else { existing_topics.join(", ") }
+                if existing_topics.is_empty() {
+                    "none".to_string()
+                } else {
+                    existing_topics.join(", ")
+                }
             ),
         };
 
@@ -81,7 +98,11 @@ impl MemSuggestTopicKey {
             "Suggested topic_key: {}\nConfidence: {:.0}%\nSimilar existing: {}\nReasoning: {}",
             suggestion.suggested_key,
             suggestion.confidence * 100.0,
-            if suggestion.existing_similar.is_empty() { "none".to_string() } else { suggestion.existing_similar.join(", ") },
+            if suggestion.existing_similar.is_empty() {
+                "none".to_string()
+            } else {
+                suggestion.existing_similar.join(", ")
+            },
             suggestion.reasoning
         );
 
@@ -102,9 +123,11 @@ impl MemSuggestTopicKey {
             "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
             "by", "from", "as", "is", "was", "are", "were", "been", "be", "have", "has", "had",
             "do", "does", "did", "will", "would", "could", "should", "may", "might", "must",
-            "this", "that", "these", "those", "i", "you", "he", "she", "it", "we", "they",
-            "my", "your", "his", "her", "its", "our", "their", "me", "him", "us", "them"
-        ].into_iter().collect();
+            "this", "that", "these", "those", "i", "you", "he", "she", "it", "we", "they", "my",
+            "your", "his", "her", "its", "our", "their", "me", "him", "us", "them",
+        ]
+        .into_iter()
+        .collect();
 
         content
             .to_lowercase()
@@ -120,10 +143,14 @@ impl MemSuggestTopicKey {
     fn calculate_similarity(&self, a: &str, b: &str) -> f32 {
         let a_terms: std::collections::HashSet<_> = a.split('-').collect();
         let b_terms: std::collections::HashSet<_> = b.split('-').collect();
-        
+
         let intersection = a_terms.intersection(&b_terms).count();
         let union = a_terms.union(&b_terms).count();
-        
-        if union == 0 { 0.0 } else { intersection as f32 / union as f32 }
+
+        if union == 0 {
+            0.0
+        } else {
+            intersection as f32 / union as f32
+        }
     }
 }

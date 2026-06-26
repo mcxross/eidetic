@@ -1,13 +1,13 @@
-use rmcp::{
-    handler::server::wrapper::Parameters,
-    model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
-    schemars::JsonSchema,
-};
-use serde::{Deserialize, Serialize};
 use crate::memory::types::*;
 use crate::storage::MemoryStore;
 use chrono::Utc;
+use rmcp::{
+    handler::server::wrapper::Parameters,
+    model::{CallToolResult, Content, ErrorData as McpError},
+    schemars::JsonSchema,
+    tool,
+};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -38,10 +38,19 @@ impl MemSavePrompt {
         Parameters(params): Parameters<MemSavePromptParams>,
     ) -> Result<CallToolResult, McpError> {
         let project = if let Some(pid) = params.project_id {
-            self.store.storage().get_project(&pid).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| McpError::invalid_params(format!("Project not found: {}", pid), None))?
+            self.store
+                .storage()
+                .get_project(&pid)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params(format!("Project not found: {}", pid), None)
+                })?
         } else {
-            self.store.get_or_create_project(None).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
+            self.store
+                .get_or_create_project(None)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
         let saved_prompt = SavedPrompt {
@@ -53,7 +62,11 @@ impl MemSavePrompt {
             created_at: Utc::now(),
         };
 
-        self.store.storage().save_prompt(&saved_prompt).await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        self.store
+            .storage()
+            .save_prompt(&saved_prompt)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Saved prompt with ID: {}",

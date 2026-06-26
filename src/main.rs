@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
+mod config;
 mod memory;
 mod server;
 mod setup;
@@ -53,6 +54,9 @@ pub struct Cli {
 
     #[arg(long, env = "EIDETIC_SUI_CONFIG_DIR", global = true)]
     pub sui_config_dir: Option<String>,
+
+    #[arg(long, env = "EIDETIC_PRIVATE_KEY", global = true)]
+    pub private_key: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -60,29 +64,166 @@ enum Commands {
     Serve,
     Tui,
     Setup { agent: String },
+    Info,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let auth_config = auth_config_from_cli(&cli);
 
-    match cli.command.unwrap_or(Commands::Serve) {
-        Commands::Serve => run_server(cli.storage_backend, cli.storage_path, auth_config).await,
-        Commands::Tui => run_tui(cli.storage_backend, cli.storage_path, auth_config).await,
-        Commands::Setup { agent } => setup::run(&agent).await,
+    // 1. Load persisted configuration
+    let mut config = config::EideticConfig::load().await?;
+
+    // 2. Merge CLI arguments (CLI takes precedence)
+    if cli.storage_backend != "sqlite" || config.storage_backend.is_none() {
+        config.storage_backend = Some(cli.storage_backend.clone());
     }
+    if cli.storage_path.is_some() {
+        config.storage_path = cli.storage_path.clone();
+    }
+    if cli.memwal_account_id.is_some() {
+        config.memwal_account_id = cli.memwal_account_id.clone();
+    }
+    if cli.memwal_registry_id.is_some() {
+        config.memwal_registry_id = cli.memwal_registry_id.clone();
+    }
+    if cli.memwal_server_url.is_some() {
+        config.memwal_server_url = cli.memwal_server_url.clone();
+    }
+    if cli.memwal_relayer_config_url.is_some() {
+        config.memwal_relayer_config_url = cli.memwal_relayer_config_url.clone();
+    }
+    if cli.memwal_namespace.is_some() {
+        config.memwal_namespace = cli.memwal_namespace.clone();
+    }
+    if cli.memwal_delegate_label.is_some() {
+        config.memwal_delegate_label = cli.memwal_delegate_label.clone();
+    }
+    if cli.sui_config_dir.is_some() {
+        config.sui_config_dir = cli.sui_config_dir.clone().map(std::path::PathBuf::from);
+    }
+    if cli.private_key.is_some() {
+        config.private_key = cli.private_key.clone();
+    }
+
+    let backend = config
+        .storage_backend
+        .clone()
+        .unwrap_or_else(|| "sqlite".to_string());
+
+    // 3. Auto-generate private key if no Sui config and no key provided (ONLY for memwal)
+    let has_sui_config = config
+        .sui_config_dir
+        .clone()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_default()
+                .join(".sui")
+                .join("sui_config")
+        })
+        .join("client.yaml")
+        .exists();
+
+    let mut config_changed = false;
+    if backend == "memwal" && !has_sui_config && config.private_key.is_none() {
+        tracing::info!(
+            "No Sui config or private key found. Generating a new one for Memwal backend..."
+        );
+        let signer = memwal_core::Ed25519Signer::generate()
+            .map_err(|e| anyhow::anyhow!("Failed to generate Ed25519 signer: {}", e))?;
+        let suiprivkey = signer
+            .to_suiprivkey()
+            .map_err(|e| anyhow::anyhow!("Failed to format suiprivkey: {}", e))?;
+        config.private_key = Some(suiprivkey);
+        config_changed = true;
+    }
+
+    let auth_config = auth_config_from_config(&config);
+    let storage_path = config.storage_path.clone();
+
+    // 4. Run the subcommand
+    let result = match cli.command.unwrap_or(Commands::Serve) {
+        Commands::Serve => {
+            run_server(
+                backend,
+                storage_path,
+                auth_config,
+                config.clone(),
+                config_changed,
+            )
+            .await
+        }
+        Commands::Tui => run_tui(backend, storage_path, auth_config).await,
+        Commands::Setup { agent } => setup::run(&agent).await,
+        Commands::Info => run_info(config).await,
+    };
+
+    result
 }
 
-fn auth_config_from_cli(cli: &Cli) -> crate::auth::MemwalAuthConfig {
+async fn run_info(config: config::EideticConfig) -> anyhow::Result<()> {
+    println!("=== Eidetic Configuration Info ===\n");
+
+    println!(
+        "Storage Backend: {}",
+        config.storage_backend.as_deref().unwrap_or("sqlite")
+    );
+    if let Some(path) = &config.storage_path {
+        println!("Storage Path: {}", path);
+    } else {
+        println!("Storage Path: Default (~/.eidetic/storage)");
+    }
+    println!(
+        "Memwal Account ID: {}",
+        config
+            .memwal_account_id
+            .as_deref()
+            .unwrap_or("Not provisioned")
+    );
+    println!(
+        "Memwal Registry ID: {}",
+        config.memwal_registry_id.as_deref().unwrap_or("Default")
+    );
+
+    println!("\n=== Sui Identity ===");
+
+    if let Some(suiprivkey) = &config.private_key {
+        use memwal_core::MemWalSigner;
+        let signer = memwal_core::Ed25519Signer::from_suiprivkey(suiprivkey)
+            .map_err(|e| anyhow::anyhow!("Failed to parse configured private key: {}", e))?;
+
+        let address = signer
+            .address()
+            .map_err(|e| anyhow::anyhow!("Failed to derive address: {}", e))?;
+
+        let address_hex = format!("0x{}", hex::encode(address.into_inner()));
+        println!("Active Address: {}", address_hex);
+        println!("Source: config.json (private_key)");
+        println!(
+            "\nIf you are using Memwal, please ensure this address is funded with SUI for gas fees."
+        );
+        println!("Sui Testnet faucet: https://faucet.sui.io/");
+    } else if let Some(sui_dir) = &config.sui_config_dir {
+        println!("Source: Custom Sui Config Dir ({})", sui_dir.display());
+        println!("(Run `sui client active-address` to check your configured address)");
+    } else {
+        println!("Source: Default Sui Config (~/.sui/sui_config)");
+        println!("(Run `sui client active-address` to check your configured address)");
+    }
+
+    Ok(())
+}
+
+fn auth_config_from_config(config: &config::EideticConfig) -> crate::auth::MemwalAuthConfig {
     crate::auth::MemwalAuthConfig {
-        account_id: cli.memwal_account_id.clone(),
-        registry_id: cli.memwal_registry_id.clone(),
-        server_url: cli.memwal_server_url.clone(),
-        relayer_config_url: cli.memwal_relayer_config_url.clone(),
-        namespace: cli.memwal_namespace.clone(),
-        delegate_label: cli.memwal_delegate_label.clone(),
-        sui_config_dir: cli.sui_config_dir.as_ref().map(std::path::PathBuf::from),
+        account_id: config.memwal_account_id.clone(),
+        registry_id: config.memwal_registry_id.clone(),
+        server_url: config.memwal_server_url.clone(),
+        relayer_config_url: config.memwal_relayer_config_url.clone(),
+        namespace: config.memwal_namespace.clone(),
+        delegate_label: config.memwal_delegate_label.clone(),
+        sui_config_dir: config.sui_config_dir.clone(),
+        private_key: config.private_key.clone(),
     }
 }
 
@@ -90,6 +231,8 @@ async fn run_server(
     backend: String,
     path: Option<String>,
     auth_config: crate::auth::MemwalAuthConfig,
+    mut eidetic_config: config::EideticConfig,
+    mut config_changed: bool,
 ) -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
@@ -99,6 +242,30 @@ async fn run_server(
     tracing::info!("Starting Eidetic MCP Server...");
 
     let store = crate::storage::MemoryStore::new(backend, path, auth_config).await?;
+
+    // If memwal provisioned a new account, save it
+    if let Some(auth_mgr) = store.auth_manager() {
+        if let Ok(snap) = auth_mgr.config_snapshot().await {
+            if eidetic_config.memwal_account_id != snap.memwal_account_id
+                && snap.memwal_account_id.is_some()
+            {
+                eidetic_config.memwal_account_id = snap.memwal_account_id;
+                config_changed = true;
+            }
+        }
+    }
+
+    if config_changed {
+        if let Err(e) = eidetic_config.save().await {
+            tracing::warn!("Failed to save Eidetic configuration: {}", e);
+        } else {
+            tracing::info!(
+                "Saved Eidetic configuration to {:?}",
+                config::EideticConfig::config_path().unwrap_or_default()
+            );
+        }
+    }
+
     let server = EideticServer::new(store);
 
     let service = server.serve(stdio()).await?;

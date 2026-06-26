@@ -37,6 +37,7 @@ pub struct EideticServer {
     mem_review: MemReview,
     mem_judge: MemJudge,
     mem_compare: MemCompare,
+    eidetic_status: crate::tools::utility::status::EideticStatus,
 }
 
 impl EideticServer {
@@ -66,6 +67,7 @@ impl EideticServer {
             mem_review: MemReview::new(store.clone()),
             mem_judge: MemJudge::new(store.clone()),
             mem_compare: MemCompare::new(store.clone()),
+            eidetic_status: crate::tools::utility::status::EideticStatus::new(store.clone()),
             store,
         }
     }
@@ -239,6 +241,16 @@ impl EideticServer {
         params: Parameters<crate::tools::utility::mem_doctor::MemDoctorParams>,
     ) -> Result<CallToolResult, McpError> {
         self.mem_doctor.mem_doctor(params).await
+    }
+
+    #[tool(
+        description = "Check the current configuration and funding status of the Eidetic memory server. Call this tool first if you are about to use Eidetic for the first time, or if you encounter any authentication or gas errors."
+    )]
+    async fn eidetic_status(
+        &self,
+        params: Parameters<crate::tools::utility::status::StatusParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.eidetic_status.eidetic_status(params).await
     }
 
     #[tool(description = "List Sui accounts available from ~/.sui for Memwal operations")]

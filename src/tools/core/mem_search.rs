@@ -1,11 +1,11 @@
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemSearchParams {
@@ -33,39 +33,64 @@ impl MemSearch {
         Parameters(params): Parameters<MemSearchParams>,
     ) -> Result<CallToolResult, McpError> {
         let project = if let Some(pid) = params.project_id {
-            self.store.storage().get_project(&pid).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| McpError::invalid_params(format!("Project not found: {}", pid), None))?
+            self.store
+                .storage()
+                .get_project(&pid)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params(format!("Project not found: {}", pid), None)
+                })?
         } else {
-            self.store.get_or_create_project(None).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
+            self.store
+                .get_or_create_project(None)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
         let project_id = project.id.clone();
         let limit = params.limit.unwrap_or(20);
 
-        let results = self.store.storage().search_observations(&project_id, &params.query, limit).await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let results = self
+            .store
+            .storage()
+            .search_observations(&project_id, &params.query, limit)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let output = if results.is_empty() {
             "No results found".to_string()
         } else {
-            results.iter().enumerate().map(|(i, r)| {
-                let ra_str = r.observation.review_after.map(|d| format!(" [Review: {}]", d.to_rfc3339())).unwrap_or_default();
-                format!(
-                    "{}. [{:?} | Scope: {:?} | State: {:?}]{} {} (score: {:.1}) - {}",
-                    i + 1,
-                    r.observation.memory_type,
-                    r.observation.scope,
-                    r.observation.lifecycle,
-                    ra_str,
-                    r.observation.title,
-                    r.score,
-                    r.observation.content.chars().take(100).collect::<String>()
-                )
-            }).collect::<Vec<_>>().join("\n")
+            results
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let ra_str = r
+                        .observation
+                        .review_after
+                        .map(|d| format!(" [Review: {}]", d.to_rfc3339()))
+                        .unwrap_or_default();
+                    format!(
+                        "{}. [{:?} | Scope: {:?} | State: {:?}]{} {} (score: {:.1}) - {}",
+                        i + 1,
+                        r.observation.memory_type,
+                        r.observation.scope,
+                        r.observation.lifecycle,
+                        ra_str,
+                        r.observation.title,
+                        r.score,
+                        r.observation.content.chars().take(100).collect::<String>()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
         };
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} results for '{}':\n{}",
-            results.len(), params.query, output
+            results.len(),
+            params.query,
+            output
         ))]))
     }
 }

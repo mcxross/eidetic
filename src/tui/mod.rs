@@ -8,13 +8,13 @@ use std::time::Duration;
 
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::storage::Storage;
 use app::{App, ConfirmAction, DetailView, Tab};
-use events::{map_key, spawn_event_loop, Action, AppEvent};
+use events::{Action, AppEvent, map_key, spawn_event_loop};
 
 pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
     enable_raw_mode()?;
@@ -37,14 +37,12 @@ pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
                 AppEvent::Key(key) => {
                     if let Some(ref confirm) = app.confirm_action.clone() {
                         match key.code {
-                            crossterm::event::KeyCode::Char('y') => {
-                                match confirm {
-                                    ConfirmAction::HardDelete(id) => {
-                                        let id = id.clone();
-                                        let _ = app.hard_delete_confirmed(&id).await;
-                                    }
+                            crossterm::event::KeyCode::Char('y') => match confirm {
+                                ConfirmAction::HardDelete(id) => {
+                                    let id = id.clone();
+                                    let _ = app.hard_delete_confirmed(&id).await;
                                 }
-                            }
+                            },
                             _ => {
                                 app.confirm_action = None;
                             }
@@ -73,52 +71,56 @@ pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
                             app.detail = DetailView::None;
                             let _ = app.reload_current_list().await;
                         }
-                        Action::NextPage => {
-                            match app.tab {
-                                Tab::Observations => {
-                                    app.observation_page += 1;
+                        Action::NextPage => match app.tab {
+                            Tab::Observations => {
+                                app.observation_page += 1;
+                                let _ = app.load_observations().await;
+                                if app.observations.is_empty() && app.observation_page > 0 {
+                                    app.observation_page -= 1;
                                     let _ = app.load_observations().await;
-                                    if app.observations.is_empty() && app.observation_page > 0 {
-                                        app.observation_page -= 1;
-                                        let _ = app.load_observations().await;
-                                    }
                                 }
-                                Tab::Sessions => {
-                                    app.session_page += 1;
+                            }
+                            Tab::Sessions => {
+                                app.session_page += 1;
+                                let _ = app.load_sessions().await;
+                                if app.sessions.is_empty() && app.session_page > 0 {
+                                    app.session_page -= 1;
                                     let _ = app.load_sessions().await;
-                                    if app.sessions.is_empty() && app.session_page > 0 {
-                                        app.session_page -= 1;
-                                        let _ = app.load_sessions().await;
-                                    }
                                 }
-                                _ => {}
                             }
-                        }
-                        Action::PrevPage => {
-                            match app.tab {
-                                Tab::Observations => {
-                                    if app.observation_page > 0 {
-                                        app.observation_page -= 1;
-                                        let _ = app.load_observations().await;
-                                    }
+                            _ => {}
+                        },
+                        Action::PrevPage => match app.tab {
+                            Tab::Observations => {
+                                if app.observation_page > 0 {
+                                    app.observation_page -= 1;
+                                    let _ = app.load_observations().await;
                                 }
-                                Tab::Sessions => {
-                                    if app.session_page > 0 {
-                                        app.session_page -= 1;
-                                        let _ = app.load_sessions().await;
-                                    }
-                                }
-                                _ => {}
                             }
-                        }
+                            Tab::Sessions => {
+                                if app.session_page > 0 {
+                                    app.session_page -= 1;
+                                    let _ = app.load_sessions().await;
+                                }
+                            }
+                            _ => {}
+                        },
                         Action::Enter => {
                             if app.detail != DetailView::None {
                             } else {
                                 match app.tab {
-                                    Tab::Projects => { let _ = app.enter_project().await; }
-                                    Tab::Observations => { let _ = app.enter_observation_detail().await; }
-                                    Tab::Sessions => { let _ = app.enter_session_detail().await; }
-                                    Tab::Search => { let _ = app.enter_observation_detail().await; }
+                                    Tab::Projects => {
+                                        let _ = app.enter_project().await;
+                                    }
+                                    Tab::Observations => {
+                                        let _ = app.enter_observation_detail().await;
+                                    }
+                                    Tab::Sessions => {
+                                        let _ = app.enter_session_detail().await;
+                                    }
+                                    Tab::Search => {
+                                        let _ = app.enter_observation_detail().await;
+                                    }
                                 }
                             }
                         }
@@ -127,7 +129,8 @@ pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
                         }
                         Action::HardDelete => {
                             if let Some(obs) = app.selected_observation() {
-                                app.confirm_action = Some(ConfirmAction::HardDelete(obs.id.clone()));
+                                app.confirm_action =
+                                    Some(ConfirmAction::HardDelete(obs.id.clone()));
                             }
                         }
                         Action::MarkReviewed => {
@@ -151,8 +154,7 @@ pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
                         Action::Edit | Action::None => {}
                     }
                 }
-                AppEvent::Tick => {
-                }
+                AppEvent::Tick => {}
             }
         }
     }

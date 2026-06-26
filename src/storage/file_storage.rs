@@ -1,3 +1,5 @@
+use crate::memory::types::*;
+use crate::storage::Storage;
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
@@ -5,8 +7,6 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
 use walkdir::WalkDir;
-use crate::memory::types::*;
-use crate::storage::Storage;
 
 pub struct FileStorage {
     base_path: PathBuf,
@@ -119,7 +119,9 @@ impl FileStorage {
     }
 
     fn obs_path(&self, id: &ObservationId) -> PathBuf {
-        self.base_path.join("observations").join(format!("{}.json", id))
+        self.base_path
+            .join("observations")
+            .join(format!("{}.json", id))
     }
 
     fn sess_path(&self, id: &SessionId) -> PathBuf {
@@ -135,7 +137,9 @@ impl FileStorage {
     }
 
     fn rel_path(&self, id: &str) -> PathBuf {
-        self.base_path.join("relations").join(format!("{}.json", id))
+        self.base_path
+            .join("relations")
+            .join(format!("{}.json", id))
     }
 
     async fn write_json<T: Serialize>(&self, path: &Path, value: &T) -> anyhow::Result<()> {
@@ -177,14 +181,20 @@ impl Storage for FileStorage {
     }
 
     async fn list_observations(&self, project_id: &ProjectId) -> anyhow::Result<Vec<Observation>> {
-        Ok(self.observations
+        Ok(self
+            .observations
             .iter()
             .filter(|o| o.project_id == *project_id && o.lifecycle != LifecycleState::Deleted)
             .map(|o| o.clone())
             .collect())
     }
 
-    async fn search_observations(&self, project_id: &ProjectId, query: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>> {
+    async fn search_observations(
+        &self,
+        project_id: &ProjectId,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<SearchResult>> {
         let query_lower = query.to_lowercase();
         let mut results = Vec::new();
 
@@ -235,24 +245,44 @@ impl Storage for FileStorage {
         Ok(results)
     }
 
-    async fn get_observations_by_topic(&self, project_id: &ProjectId, topic_key: &TopicKey) -> anyhow::Result<Vec<Observation>> {
-        Ok(self.observations
+    async fn get_observations_by_topic(
+        &self,
+        project_id: &ProjectId,
+        topic_key: &TopicKey,
+    ) -> anyhow::Result<Vec<Observation>> {
+        Ok(self
+            .observations
             .iter()
-            .filter(|o| o.project_id == *project_id && o.topic_key.as_ref() == Some(topic_key) && o.lifecycle != LifecycleState::Deleted)
+            .filter(|o| {
+                o.project_id == *project_id
+                    && o.topic_key.as_ref() == Some(topic_key)
+                    && o.lifecycle != LifecycleState::Deleted
+            })
             .map(|o| o.clone())
             .collect())
     }
 
-    async fn get_observations_by_session(&self, session_id: &SessionId) -> anyhow::Result<Vec<Observation>> {
-        Ok(self.observations
+    async fn get_observations_by_session(
+        &self,
+        session_id: &SessionId,
+    ) -> anyhow::Result<Vec<Observation>> {
+        Ok(self
+            .observations
             .iter()
-            .filter(|o| o.session_id.as_ref() == Some(session_id) && o.lifecycle != LifecycleState::Deleted)
+            .filter(|o| {
+                o.session_id.as_ref() == Some(session_id) && o.lifecycle != LifecycleState::Deleted
+            })
             .map(|o| o.clone())
             .collect())
     }
 
-    async fn get_recent_observations(&self, project_id: &ProjectId, limit: usize) -> anyhow::Result<Vec<Observation>> {
-        let mut obs: Vec<_> = self.observations
+    async fn get_recent_observations(
+        &self,
+        project_id: &ProjectId,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Observation>> {
+        let mut obs: Vec<_> = self
+            .observations
             .iter()
             .filter(|o| o.project_id == *project_id && o.lifecycle != LifecycleState::Deleted)
             .map(|o| o.clone())
@@ -303,15 +333,21 @@ impl Storage for FileStorage {
     }
 
     async fn list_sessions(&self, project_id: &ProjectId) -> anyhow::Result<Vec<Session>> {
-        Ok(self.sessions
+        Ok(self
+            .sessions
             .iter()
             .filter(|s| s.project_id == *project_id)
             .map(|s| s.clone())
             .collect())
     }
 
-    async fn get_recent_sessions(&self, project_id: &ProjectId, limit: usize) -> anyhow::Result<Vec<Session>> {
-        let mut sessions: Vec<_> = self.sessions
+    async fn get_recent_sessions(
+        &self,
+        project_id: &ProjectId,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Session>> {
+        let mut sessions: Vec<_> = self
+            .sessions
             .iter()
             .filter(|s| s.project_id == *project_id)
             .map(|s| s.clone())
@@ -333,9 +369,14 @@ impl Storage for FileStorage {
 
     async fn get_project_by_path(&self, path: &str) -> anyhow::Result<Option<Project>> {
         let canonical = Project::canonicalize(path);
-        Ok(self.projects
+        Ok(self
+            .projects
             .iter()
-            .find(|p| p.path == path || p.canonical_name == canonical || p.aliases.iter().any(|a| a == path))
+            .find(|p| {
+                p.path == path
+                    || p.canonical_name == canonical
+                    || p.aliases.iter().any(|a| a == path)
+            })
             .map(|v| v.clone()))
     }
 
@@ -353,21 +394,34 @@ impl Storage for FileStorage {
         self.write_json(&self.prompt_path(&prompt.id), prompt).await
     }
 
-    async fn get_prompts(&self, project_id: &ProjectId, session_id: Option<&SessionId>) -> anyhow::Result<Vec<SavedPrompt>> {
-        Ok(self.prompts
+    async fn get_prompts(
+        &self,
+        project_id: &ProjectId,
+        session_id: Option<&SessionId>,
+    ) -> anyhow::Result<Vec<SavedPrompt>> {
+        Ok(self
+            .prompts
             .iter()
-            .filter(|p| p.project_id == *project_id && session_id.map_or(true, |sid| p.session_id.as_ref() == Some(sid)))
+            .filter(|p| {
+                p.project_id == *project_id
+                    && session_id.map_or(true, |sid| p.session_id.as_ref() == Some(sid))
+            })
             .map(|p| p.clone())
             .collect())
     }
 
     async fn save_relation(&self, relation: &SemanticRelation) -> anyhow::Result<()> {
         self.relations.insert(relation.id.clone(), relation.clone());
-        self.write_json(&self.rel_path(&relation.id), relation).await
+        self.write_json(&self.rel_path(&relation.id), relation)
+            .await
     }
 
-    async fn get_relations(&self, observation_id: &ObservationId) -> anyhow::Result<Vec<SemanticRelation>> {
-        Ok(self.relations
+    async fn get_relations(
+        &self,
+        observation_id: &ObservationId,
+    ) -> anyhow::Result<Vec<SemanticRelation>> {
+        Ok(self
+            .relations
             .iter()
             .filter(|r| r.source_id == *observation_id || r.target_id == *observation_id)
             .map(|r| r.clone())
@@ -375,18 +429,29 @@ impl Storage for FileStorage {
     }
 
     async fn get_stats(&self, project_id: &ProjectId) -> anyhow::Result<MemoryStats> {
-        let observations: Vec<_> = self.observations
+        let observations: Vec<_> = self
+            .observations
             .iter()
             .filter(|o| o.project_id == *project_id)
             .map(|o| o.clone())
             .collect();
 
         let total = observations.len();
-        let active = observations.iter().filter(|o| o.lifecycle == LifecycleState::Active).count();
-        let archived = observations.iter().filter(|o| o.lifecycle == LifecycleState::Archived).count();
-        let deleted = observations.iter().filter(|o| o.lifecycle == LifecycleState::Deleted).count();
+        let active = observations
+            .iter()
+            .filter(|o| o.lifecycle == LifecycleState::Active)
+            .count();
+        let archived = observations
+            .iter()
+            .filter(|o| o.lifecycle == LifecycleState::Archived)
+            .count();
+        let deleted = observations
+            .iter()
+            .filter(|o| o.lifecycle == LifecycleState::Deleted)
+            .count();
 
-        let sessions: Vec<_> = self.sessions
+        let sessions: Vec<_> = self
+            .sessions
             .iter()
             .filter(|s| s.project_id == *project_id)
             .map(|s| s.clone())
@@ -395,11 +460,20 @@ impl Storage for FileStorage {
         let total_sessions = sessions.len();
         let active_sessions = sessions.iter().filter(|s| s.ended_at.is_none()).count();
 
-        let oldest = observations.iter().min_by_key(|o| o.created_at).map(|o| o.created_at);
-        let newest = observations.iter().max_by_key(|o| o.created_at).map(|o| o.created_at);
+        let oldest = observations
+            .iter()
+            .min_by_key(|o| o.created_at)
+            .map(|o| o.created_at);
+        let newest = observations
+            .iter()
+            .max_by_key(|o| o.created_at)
+            .map(|o| o.created_at);
 
         let mut storage_size = 0u64;
-        for entry in WalkDir::new(&self.base_path).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&self.base_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if let Ok(meta) = entry.metadata() {
                 storage_size += meta.len();
             }
@@ -464,5 +538,5 @@ impl Storage for FileStorage {
     }
 }
 
-use serde::Serialize;
 use chrono::Utc;
+use serde::Serialize;

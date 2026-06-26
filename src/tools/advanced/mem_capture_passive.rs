@@ -1,12 +1,12 @@
+use crate::memory::types::*;
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
-use crate::memory::types::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemCapturePassiveParams {
@@ -32,10 +32,19 @@ impl MemCapturePassive {
         Parameters(params): Parameters<MemCapturePassiveParams>,
     ) -> Result<CallToolResult, McpError> {
         let project = if let Some(pid) = params.project_id {
-            self.store.storage().get_project(&pid).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| McpError::invalid_params(format!("Project not found: {}", pid), None))?
+            self.store
+                .storage()
+                .get_project(&pid)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params(format!("Project not found: {}", pid), None)
+                })?
         } else {
-            self.store.get_or_create_project(None).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
+            self.store
+                .get_or_create_project(None)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
         let title = "Passive Capture Learning".to_string();
@@ -47,7 +56,11 @@ impl MemCapturePassive {
             params.text,
         );
 
-        self.store.storage().save_observation(&obs).await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        self.store
+            .storage()
+            .save_observation(&obs)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Captured passive learning as Observation ID: {}",

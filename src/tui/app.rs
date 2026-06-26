@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use crate::memory::types::*;
 use crate::storage::Storage;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -106,7 +106,6 @@ impl App {
         }
     }
 
-
     pub async fn load_projects(&mut self) -> anyhow::Result<()> {
         self.projects = self.storage.list_projects().await?;
         self.projects.sort_by(|a, b| a.name.cmp(&b.name));
@@ -120,7 +119,8 @@ impl App {
             all.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
             let start = self.observation_page * self.page_size;
             if start < all.len() {
-                self.observations = all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
+                self.observations =
+                    all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
             } else {
                 self.observations.clear();
             }
@@ -137,7 +137,8 @@ impl App {
             all.sort_by(|a, b| b.started_at.cmp(&a.started_at));
             let start = self.session_page * self.page_size;
             if start < all.len() {
-                self.sessions = all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
+                self.sessions =
+                    all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
             } else {
                 self.sessions.clear();
             }
@@ -151,7 +152,10 @@ impl App {
     pub async fn do_search(&mut self) -> anyhow::Result<()> {
         if let Some(proj) = &self.active_project {
             if !self.input_buffer.is_empty() {
-                self.search_results = self.storage.search_observations(&proj.id, &self.input_buffer, self.page_size).await?;
+                self.search_results = self
+                    .storage
+                    .search_observations(&proj.id, &self.input_buffer, self.page_size)
+                    .await?;
             } else {
                 self.search_results.clear();
             }
@@ -171,12 +175,13 @@ impl App {
         Ok(())
     }
 
-
     pub async fn soft_delete_selected(&mut self) -> anyhow::Result<()> {
         if let Some(obs) = self.selected_observation() {
             let id = obs.id.clone();
             let title = obs.title.clone();
-            self.storage.delete_observation(&id, DeleteMode::Soft).await?;
+            self.storage
+                .delete_observation(&id, DeleteMode::Soft)
+                .await?;
             self.status = format!("Soft-deleted: {}", title);
             self.reload_current_list().await?;
         }
@@ -184,10 +189,15 @@ impl App {
     }
 
     pub async fn hard_delete_confirmed(&mut self, id: &ObservationId) -> anyhow::Result<()> {
-        let title = self.storage.get_observation(id).await?
+        let title = self
+            .storage
+            .get_observation(id)
+            .await?
             .map(|o| o.title.clone())
             .unwrap_or_else(|| id.clone());
-        self.storage.delete_observation(id, DeleteMode::Hard).await?;
+        self.storage
+            .delete_observation(id, DeleteMode::Hard)
+            .await?;
         self.status = format!("Hard-deleted: {}", title);
         self.confirm_action = None;
         self.reload_current_list().await?;
@@ -206,11 +216,13 @@ impl App {
         Ok(())
     }
 
-
     pub fn selected_observation(&self) -> Option<&Observation> {
         match self.tab {
             Tab::Observations => self.observations.get(self.observation_cursor),
-            Tab::Search => self.search_results.get(self.search_cursor).map(|r| &r.observation),
+            Tab::Search => self
+                .search_results
+                .get(self.search_cursor)
+                .map(|r| &r.observation),
             _ => None,
         }
     }
@@ -236,7 +248,9 @@ impl App {
     pub fn cursor_up(&mut self) {
         match self.tab {
             Tab::Projects => self.project_cursor = self.project_cursor.saturating_sub(1),
-            Tab::Observations => self.observation_cursor = self.observation_cursor.saturating_sub(1),
+            Tab::Observations => {
+                self.observation_cursor = self.observation_cursor.saturating_sub(1)
+            }
             Tab::Sessions => self.session_cursor = self.session_cursor.saturating_sub(1),
             Tab::Search => self.search_cursor = self.search_cursor.saturating_sub(1),
         }

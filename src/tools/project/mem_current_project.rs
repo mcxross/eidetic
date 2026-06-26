@@ -1,15 +1,17 @@
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemCurrentProjectParams {
-    #[schemars(description = "Working directory to detect project from (optional, defaults to cwd)")]
+    #[schemars(
+        description = "Working directory to detect project from (optional, defaults to cwd)"
+    )]
     pub cwd: Option<String>,
 }
 
@@ -28,26 +30,48 @@ impl MemCurrentProject {
         &self,
         Parameters(params): Parameters<MemCurrentProjectParams>,
     ) -> Result<CallToolResult, McpError> {
-        let cwd = params.cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_default().to_string_lossy().to_string());
-        
-        let detected = self.store.detect_project(Some(cwd.clone())).await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        
+        let cwd = params.cwd.unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        });
+
+        let detected = self
+            .store
+            .detect_project(Some(cwd.clone()))
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
         let project = if let Some(project_id) = detected {
-            self.store.storage().get_project(&project_id).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
+            self.store
+                .storage()
+                .get_project(&project_id)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
         } else {
-            Some(self.store.get_or_create_project(Some(cwd.clone())).await.map_err(|e| McpError::internal_error(e.to_string(), None))?)
+            Some(
+                self.store
+                    .get_or_create_project(Some(cwd.clone()))
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?,
+            )
         };
 
         if let Some(proj) = project {
             let output = format!(
                 "Project: {}\nID: {}\nPath: {}\nCanonical: {}\nAliases: {}\nActive: {}",
-                proj.name, proj.id, proj.path, proj.canonical_name,
-                proj.aliases.join(", "), proj.active
+                proj.name,
+                proj.id,
+                proj.path,
+                proj.canonical_name,
+                proj.aliases.join(", "),
+                proj.active
             );
             Ok(CallToolResult::success(vec![Content::text(output)]))
         } else {
             Ok(CallToolResult::success(vec![Content::text(
-                "No project detected. Run mem_current_project with a cwd to create one."
+                "No project detected. Run mem_current_project with a cwd to create one.",
             )]))
         }
     }

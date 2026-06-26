@@ -1,11 +1,11 @@
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemGetObservationParams {
@@ -28,8 +28,15 @@ impl MemGetObservation {
         &self,
         Parameters(params): Parameters<MemGetObservationParams>,
     ) -> Result<CallToolResult, McpError> {
-        let obs = self.store.storage().get_observation(&params.id).await.map_err(|e| McpError::internal_error(e.to_string(), None))?
-            .ok_or_else(|| McpError::invalid_params(format!("Observation not found: {}", params.id), None))?;
+        let obs = self
+            .store
+            .storage()
+            .get_observation(&params.id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .ok_or_else(|| {
+                McpError::invalid_params(format!("Observation not found: {}", params.id), None)
+            })?;
 
         let output = format!(
             "ID: {}\nProject: {}\nType: {:?}\nTitle: {}\nTopic: {}\nTags: {}\nLifecycle: {:?}\nCreated: {}\nUpdated: {}\nReview After: {}\nRelated: {}\n\nContent:\n{}",
@@ -42,7 +49,9 @@ impl MemGetObservation {
             obs.lifecycle,
             obs.created_at.to_rfc3339(),
             obs.updated_at.to_rfc3339(),
-            obs.review_after.map(|dt| dt.to_rfc3339()).unwrap_or_else(|| "none".to_string()),
+            obs.review_after
+                .map(|dt| dt.to_rfc3339())
+                .unwrap_or_else(|| "none".to_string()),
             obs.related_observations.join(", "),
             obs.content
         );

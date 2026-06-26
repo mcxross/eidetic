@@ -1,11 +1,11 @@
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemJudgeParams {
@@ -25,14 +25,16 @@ impl MemJudge {
         Self { store }
     }
 
-    #[tool(description = "Record a verdict for a pending memory conflict surfaced by mem_save (or relation)")]
+    #[tool(
+        description = "Record a verdict for a pending memory conflict surfaced by mem_save (or relation)"
+    )]
     pub async fn mem_judge(
         &self,
         Parameters(params): Parameters<MemJudgeParams>,
     ) -> Result<CallToolResult, McpError> {
-        
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Recorded verdict '{}' for relation {}", params.verdict, params.relation_id
+            "Recorded verdict '{}' for relation {}",
+            params.verdict, params.relation_id
         ))]))
     }
 }

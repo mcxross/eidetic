@@ -1,12 +1,12 @@
+use crate::memory::types::*;
+use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
-use crate::memory::types::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemDoctorParams {
@@ -24,14 +24,26 @@ impl MemDoctor {
         Self { store }
     }
 
-    #[tool(description = "Run read-only operational diagnostics for project detection and store health")]
+    #[tool(
+        description = "Run read-only operational diagnostics for project detection and store health"
+    )]
     pub async fn mem_doctor(
         &self,
         Parameters(params): Parameters<MemDoctorParams>,
     ) -> Result<CallToolResult, McpError> {
-        let cwd = params.cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_default().to_string_lossy().to_string());
-        
-        let health = self.store.storage().health_check().await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let cwd = params.cwd.unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        });
+
+        let health = self
+            .store
+            .storage()
+            .health_check()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let mut issues = Vec::new();
 
         let mut detection = ProjectDetectionResult {
@@ -57,7 +69,10 @@ impl MemDoctor {
                 severity: IssueSeverity::Info,
                 category: "project_detection".to_string(),
                 message: format!("No project found for path: {}", cwd),
-                suggestion: Some("mem_save or mem_session_start will create a new project automatically".to_string()),
+                suggestion: Some(
+                    "mem_save or mem_session_start will create a new project automatically"
+                        .to_string(),
+                ),
             });
         }
 
@@ -65,7 +80,10 @@ impl MemDoctor {
             issues.push(DiagnosticIssue {
                 severity: IssueSeverity::Warning,
                 category: "health".to_string(),
-                message: format!("Found {} orphaned observations", health.orphaned_observations),
+                message: format!(
+                    "Found {} orphaned observations",
+                    health.orphaned_observations
+                ),
                 suggestion: None,
             });
         }
@@ -77,8 +95,9 @@ impl MemDoctor {
             recommendations: vec!["Review orphaned data".to_string()],
         };
 
-        let result_json = serde_json::to_string_pretty(&doctor_result)
-            .map_err(|e| McpError::internal_error(format!("Failed to serialize result: {}", e), None))?;
+        let result_json = serde_json::to_string_pretty(&doctor_result).map_err(|e| {
+            McpError::internal_error(format!("Failed to serialize result: {}", e), None)
+        })?;
 
         Ok(CallToolResult::success(vec![Content::text(result_json)]))
     }

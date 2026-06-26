@@ -16,6 +16,7 @@ pub struct MemwalAuthConfig {
     pub namespace: Option<String>,
     pub delegate_label: Option<String>,
     pub sui_config_dir: Option<PathBuf>,
+    pub private_key: Option<String>,
 }
 
 impl MemwalAuthConfig {
@@ -174,7 +175,8 @@ impl AuthManager {
             state.provisioned = None;
         }
 
-        self.ensure_memwal_client().await?;
+        // We don't ensure_memwal_client() here because if a new key was generated,
+        // it's guaranteed to fail due to lack of gas. We let it happen lazily on tool calls.
         self.config_snapshot().await
     }
 
@@ -243,7 +245,17 @@ impl AuthManager {
         let provisioned = tokio::time::timeout(Duration::from_secs(90), MemWal::provision(config))
             .await
             .map_err(|_| anyhow!("Timed out provisioning Memwal client"))?
-            .map_err(|error| anyhow!("Failed to provision Memwal client: {error}"))?;
+            .map_err(|error| {
+                let msg = error.to_string();
+                if msg.contains("GasBalanceTooLow") || msg.contains("insufficient gas") || msg.contains("InsufficientGas") {
+                    anyhow!(
+                        "Insufficient gas to provision Memwal account.\n\nPlease fund your address: {}\nSui Testnet faucet: https://faucet.sui.io/",
+                        selected.address
+                    )
+                } else {
+                    anyhow!("Failed to provision Memwal client: {msg}")
+                }
+            })?;
 
         let client = Arc::new(provisioned.memwal().clone());
         let provisioned_client = ProvisionedClient {
@@ -259,6 +271,19 @@ impl AuthManager {
     }
 
     async fn select_default_account(&self) -> anyhow::Result<()> {
+        if let Some(suiprivkey) = &self.config.private_key {
+            let signer = signer_from_keystore_entry(suiprivkey)
+                .with_context(|| "Failed to parse provided private_key")?;
+            let address = normalize_address(&signer.address()?.to_string());
+            let mut state = self.state.write().await;
+            state.selected = Some(SelectedAccount {
+                address,
+                alias: Some("config".to_string()),
+                suiprivkey: suiprivkey.clone(),
+            });
+            return Ok(());
+        }
+
         let default_account = {
             let state = self.state.read().await;
             let Some(sui_state) = &state.sui_state else {
@@ -534,7 +559,11 @@ mod tests {
             ),
         )
         .unwrap();
-        std::fs::write(dir.join("sui.keystore"), serde_json::to_string(&keys).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("sui.keystore"),
+            serde_json::to_string(&keys).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -662,7 +691,10 @@ mod tests {
         .unwrap();
         let snapshot = manager.config_snapshot().await.unwrap();
 
-        assert_eq!(snapshot.selected_address.as_deref(), Some(active_address.as_str()));
+        assert_eq!(
+            snapshot.selected_address.as_deref(),
+            Some(active_address.as_str())
+        );
         assert!(!snapshot.provisioned);
     }
 
@@ -671,15 +703,16 @@ mod tests {
     fn loads_real_sui_config_from_home() {
         let dir = default_sui_config_dir();
         let state = load_sui_config(Some(dir.clone())).unwrap_or_else(|error| {
-            panic!("failed to load real Sui config at {}: {error}", dir.display())
+            panic!(
+                "failed to load real Sui config at {}: {error}",
+                dir.display()
+            )
         });
 
         assert!(
-            !state
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.contains("Sui client config not found")
-                    || diagnostic.contains("No usable Sui accounts found")),
+            !state.diagnostics.iter().any(|diagnostic| diagnostic
+                .contains("Sui client config not found")
+                || diagnostic.contains("No usable Sui accounts found")),
             "real Sui config diagnostics: {:?}",
             state.diagnostics
         );
@@ -688,7 +721,10 @@ mod tests {
             "real Sui config should expose at least one account"
         );
         assert!(
-            state.accounts.iter().any(|account| account.suiprivkey.is_some()),
+            state
+                .accounts
+                .iter()
+                .any(|account| account.suiprivkey.is_some()),
             "real Sui config should expose at least one usable Ed25519 private key"
         );
         if let Some(active_address) = state.active_address.as_deref() {

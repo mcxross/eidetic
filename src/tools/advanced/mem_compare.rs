@@ -1,13 +1,13 @@
+use crate::memory::types::*;
+use crate::storage::MemoryStore;
+use chrono::Utc;
 use rmcp::{
     handler::server::wrapper::Parameters,
     model::{CallToolResult, Content, ErrorData as McpError},
-    tool,
     schemars::JsonSchema,
+    tool,
 };
 use serde::{Deserialize, Serialize};
-use crate::storage::MemoryStore;
-use crate::memory::types::*;
-use chrono::Utc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -16,7 +16,9 @@ pub struct MemCompareParams {
     pub source_id: String,
     #[schemars(description = "Target observation ID")]
     pub target_id: String,
-    #[schemars(description = "Type of relation (duplicate, contradicts, supersedes, extends, references, related)")]
+    #[schemars(
+        description = "Type of relation (duplicate, contradicts, supersedes, extends, references, related)"
+    )]
     pub relation_type: RelationType,
     #[schemars(description = "Confidence score (0.0 to 1.0)")]
     pub confidence: f32,
@@ -50,7 +52,11 @@ impl MemCompare {
             judged_by: None,
         };
 
-        self.store.storage().save_relation(&relation).await.map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        self.store
+            .storage()
+            .save_relation(&relation)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Persisted semantic relation (ID: {}) between {} and {}",

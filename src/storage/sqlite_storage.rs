@@ -1,7 +1,10 @@
-use std::path::Path;
-use sqlx::{sqlite::{SqliteConnectOptions, SqlitePoolOptions}, SqlitePool, Row};
 use async_trait::async_trait;
-use chrono::{Utc, DateTime};
+use chrono::{DateTime, Utc};
+use sqlx::{
+    Row, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
+use std::path::Path;
 
 use crate::memory::types::*;
 use crate::storage::Storage;
@@ -13,7 +16,7 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     pub async fn new<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let db_path = path.as_ref().join("eidetic.db");
-        
+
         if let Some(parent) = db_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
@@ -151,9 +154,11 @@ impl Storage for SqliteStorage {
 
         if let Some(row) = row {
             let aliases: Vec<String> = serde_json::from_str(row.get("aliases"))?;
-            let created_at = DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let updated_at = DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
-            
+            let created_at =
+                DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+            let updated_at =
+                DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
+
             Ok(Some(Project {
                 id: row.get("id"),
                 name: row.get("name"),
@@ -174,7 +179,7 @@ impl Storage for SqliteStorage {
             .bind(path)
             .fetch_optional(&self.pool)
             .await?;
-            
+
         if let Some(row) = row {
             let id: String = row.get("id");
             self.get_project(&id).await
@@ -187,7 +192,7 @@ impl Storage for SqliteStorage {
         let rows = sqlx::query("SELECT id FROM projects")
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut projects = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -206,7 +211,7 @@ impl Storage for SqliteStorage {
         let ended_at = session.ended_at.map(|t| t.to_rfc3339());
         sqlx::query(
             "INSERT OR REPLACE INTO sessions (id, project_id, created_at, updated_at, active)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind(&session.id)
         .bind(&session.project_id)
@@ -225,10 +230,14 @@ impl Storage for SqliteStorage {
             .await?;
 
         if let Some(row) = row {
-            let created_at = DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let ended_at = row.get::<Option<String>, _>("updated_at")
-                .map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc));
-            
+            let created_at =
+                DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+            let ended_at = row.get::<Option<String>, _>("updated_at").map(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .unwrap()
+                    .with_timezone(&Utc)
+            });
+
             Ok(Some(Session {
                 id: row.get("id"),
                 project_id: row.get("project_id"),
@@ -248,11 +257,12 @@ impl Storage for SqliteStorage {
     }
 
     async fn list_sessions(&self, project_id: &ProjectId) -> anyhow::Result<Vec<Session>> {
-        let rows = sqlx::query("SELECT id FROM sessions WHERE project_id = ? ORDER BY created_at DESC")
-            .bind(project_id)
-            .fetch_all(&self.pool)
-            .await?;
-            
+        let rows =
+            sqlx::query("SELECT id FROM sessions WHERE project_id = ? ORDER BY created_at DESC")
+                .bind(project_id)
+                .fetch_all(&self.pool)
+                .await?;
+
         let mut sessions = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -263,13 +273,19 @@ impl Storage for SqliteStorage {
         Ok(sessions)
     }
 
-    async fn get_recent_sessions(&self, project_id: &ProjectId, limit: usize) -> anyhow::Result<Vec<Session>> {
-        let rows = sqlx::query("SELECT id FROM sessions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?")
-            .bind(project_id)
-            .bind(limit as i64)
-            .fetch_all(&self.pool)
-            .await?;
-            
+    async fn get_recent_sessions(
+        &self,
+        project_id: &ProjectId,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Session>> {
+        let rows = sqlx::query(
+            "SELECT id FROM sessions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+        )
+        .bind(project_id)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
         let mut sessions = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -283,11 +299,22 @@ impl Storage for SqliteStorage {
     async fn save_observation(&self, obs: &Observation) -> anyhow::Result<()> {
         let tags_json = serde_json::to_string(&obs.tags)?;
         let metadata_json = serde_json::to_string(&obs.metadata)?;
-        let type_str = serde_json::to_string(&obs.memory_type)?.trim_matches('"').to_string();
-        let scope_str = serde_json::to_string(&obs.scope)?.trim_matches('"').to_string();
-        let state_str = serde_json::to_string(&obs.lifecycle)?.trim_matches('"').to_string();
+        let type_str = serde_json::to_string(&obs.memory_type)?
+            .trim_matches('"')
+            .to_string();
+        let scope_str = serde_json::to_string(&obs.scope)?
+            .trim_matches('"')
+            .to_string();
+        let state_str = serde_json::to_string(&obs.lifecycle)?
+            .trim_matches('"')
+            .to_string();
         let related_json = serde_json::to_string(&obs.related_observations)?;
-        let deleted_mode_str = obs.deleted_mode.map(|m| serde_json::to_string(&m).unwrap().trim_matches('"').to_string());
+        let deleted_mode_str = obs.deleted_mode.map(|m| {
+            serde_json::to_string(&m)
+                .unwrap()
+                .trim_matches('"')
+                .to_string()
+        });
 
         sqlx::query(
             "INSERT OR REPLACE INTO observations 
@@ -331,20 +358,42 @@ impl Storage for SqliteStorage {
 
         if let Some(row) = row {
             let tags: Vec<String> = serde_json::from_str(row.get("tags"))?;
-            let metadata: std::collections::HashMap<String, serde_json::Value> = serde_json::from_str(row.get("metadata"))?;
-            let memory_type: MemoryType = serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("type")))?;
-            let scope: Scope = serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("scope")))?;
-            let lifecycle: LifecycleState = serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("lifecycle_state")))?;
-            let created_at = DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let updated_at = DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
-            let last_seen_at = DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
-            
-            let reviewed_at = row.get::<Option<String>, _>("reviewed_at").map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc));
-            let review_after = row.get::<Option<String>, _>("review_after").map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc));
-            let deleted_at = row.get::<Option<String>, _>("deleted_at").map(|s| DateTime::parse_from_rfc3339(&s).unwrap().with_timezone(&Utc));
-            let deleted_mode = row.get::<Option<String>, _>("deleted_mode").map(|s| serde_json::from_str(&format!("\"{}\"", s)).unwrap());
-            let related_observations: Vec<String> = serde_json::from_str(row.get("related_observations"))?;
-            
+            let metadata: std::collections::HashMap<String, serde_json::Value> =
+                serde_json::from_str(row.get("metadata"))?;
+            let memory_type: MemoryType =
+                serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("type")))?;
+            let scope: Scope =
+                serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("scope")))?;
+            let lifecycle: LifecycleState =
+                serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("lifecycle_state")))?;
+            let created_at =
+                DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+            let updated_at =
+                DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
+            let last_seen_at =
+                DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
+
+            let reviewed_at = row.get::<Option<String>, _>("reviewed_at").map(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .unwrap()
+                    .with_timezone(&Utc)
+            });
+            let review_after = row.get::<Option<String>, _>("review_after").map(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .unwrap()
+                    .with_timezone(&Utc)
+            });
+            let deleted_at = row.get::<Option<String>, _>("deleted_at").map(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .unwrap()
+                    .with_timezone(&Utc)
+            });
+            let deleted_mode = row
+                .get::<Option<String>, _>("deleted_mode")
+                .map(|s| serde_json::from_str(&format!("\"{}\"", s)).unwrap());
+            let related_observations: Vec<String> =
+                serde_json::from_str(row.get("related_observations"))?;
+
             Ok(Some(Observation {
                 id: row.get("id"),
                 project_id: row.get("project_id"),
@@ -383,10 +432,15 @@ impl Storage for SqliteStorage {
     async fn delete_observation(&self, id: &ObservationId, mode: DeleteMode) -> anyhow::Result<()> {
         match mode {
             DeleteMode::Hard => {
-                sqlx::query("DELETE FROM observations WHERE id = ?").bind(id).execute(&self.pool).await?;
+                sqlx::query("DELETE FROM observations WHERE id = ?")
+                    .bind(id)
+                    .execute(&self.pool)
+                    .await?;
             }
             DeleteMode::Soft => {
-                let state_str = serde_json::to_string(&LifecycleState::Deleted)?.trim_matches('"').to_string();
+                let state_str = serde_json::to_string(&LifecycleState::Deleted)?
+                    .trim_matches('"')
+                    .to_string();
                 let deleted_mode_str = serde_json::to_string(&mode)?.trim_matches('"').to_string();
                 sqlx::query("UPDATE observations SET lifecycle_state = ?, deleted_at = ?, deleted_mode = ? WHERE id = ?")
                     .bind(state_str)
@@ -405,7 +459,7 @@ impl Storage for SqliteStorage {
             .bind(project_id)
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut obs = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -416,7 +470,12 @@ impl Storage for SqliteStorage {
         Ok(obs)
     }
 
-    async fn search_observations(&self, project_id: &ProjectId, query: &str, limit: usize) -> anyhow::Result<Vec<SearchResult>> {
+    async fn search_observations(
+        &self,
+        project_id: &ProjectId,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<SearchResult>> {
         let safe_query = format!("\"{}\"", query.replace("\"", "\"\""));
         let rows = sqlx::query(
             "SELECT f.id, bm25(f) as rank FROM observations_fts f JOIN observations o ON f.id = o.id WHERE f.observations_fts MATCH ? AND o.deleted_at IS NULL ORDER BY rank LIMIT ?"
@@ -425,7 +484,7 @@ impl Storage for SqliteStorage {
             .bind(limit as i64)
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut results = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -440,18 +499,22 @@ impl Storage for SqliteStorage {
                 }
             }
         }
-        
+
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         Ok(results)
     }
 
-    async fn get_observations_by_topic(&self, project_id: &ProjectId, topic_key: &TopicKey) -> anyhow::Result<Vec<Observation>> {
+    async fn get_observations_by_topic(
+        &self,
+        project_id: &ProjectId,
+        topic_key: &TopicKey,
+    ) -> anyhow::Result<Vec<Observation>> {
         let rows = sqlx::query("SELECT id FROM observations WHERE project_id = ? AND topic_key = ? AND deleted_at IS NULL ORDER BY created_at DESC")
             .bind(project_id)
             .bind(topic_key)
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut obs = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -462,12 +525,15 @@ impl Storage for SqliteStorage {
         Ok(obs)
     }
 
-    async fn get_observations_by_session(&self, session_id: &SessionId) -> anyhow::Result<Vec<Observation>> {
+    async fn get_observations_by_session(
+        &self,
+        session_id: &SessionId,
+    ) -> anyhow::Result<Vec<Observation>> {
         let rows = sqlx::query("SELECT id FROM observations WHERE session_id = ? AND deleted_at IS NULL ORDER BY created_at DESC")
             .bind(session_id)
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut obs = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -478,13 +544,17 @@ impl Storage for SqliteStorage {
         Ok(obs)
     }
 
-    async fn get_recent_observations(&self, project_id: &ProjectId, limit: usize) -> anyhow::Result<Vec<Observation>> {
+    async fn get_recent_observations(
+        &self,
+        project_id: &ProjectId,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Observation>> {
         let rows = sqlx::query("SELECT id FROM observations WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?")
             .bind(project_id)
             .bind(limit as i64)
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut obs = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -503,7 +573,7 @@ impl Storage for SqliteStorage {
             .bind(serde_json::to_string(&LifecycleState::Archived)?.trim_matches('"'))
             .fetch_all(&self.pool)
             .await?;
-            
+
         let mut reviews = Vec::new();
         for row in rows {
             let id: String = row.get("id");
@@ -534,7 +604,11 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
-    async fn get_prompts(&self, project_id: &ProjectId, session_id: Option<&SessionId>) -> anyhow::Result<Vec<SavedPrompt>> {
+    async fn get_prompts(
+        &self,
+        project_id: &ProjectId,
+        session_id: Option<&SessionId>,
+    ) -> anyhow::Result<Vec<SavedPrompt>> {
         let rows = if let Some(sid) = session_id {
             sqlx::query("SELECT * FROM prompts WHERE project_id = ? AND session_id = ? ORDER BY created_at DESC")
                 .bind(project_id)
@@ -547,7 +621,7 @@ impl Storage for SqliteStorage {
                 .fetch_all(&self.pool)
                 .await?
         };
-            
+
         let mut prompts = Vec::new();
         for row in rows {
             prompts.push(SavedPrompt {
@@ -556,14 +630,17 @@ impl Storage for SqliteStorage {
                 session_id: row.get("session_id"),
                 prompt: row.get("prompt"),
                 context: row.get("context"),
-                created_at: DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc),
+                created_at: DateTime::parse_from_rfc3339(row.get("created_at"))?
+                    .with_timezone(&Utc),
             });
         }
         Ok(prompts)
     }
 
     async fn save_relation(&self, relation: &SemanticRelation) -> anyhow::Result<()> {
-        let type_str = serde_json::to_string(&relation.relation_type)?.trim_matches('"').to_string();
+        let type_str = serde_json::to_string(&relation.relation_type)?
+            .trim_matches('"')
+            .to_string();
         sqlx::query(
             "INSERT OR REPLACE INTO relations (id, source_id, target_id, relation_type, confidence, reasoning, created_at, judged_by)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -581,13 +658,18 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
-    async fn get_relations(&self, observation_id: &ObservationId) -> anyhow::Result<Vec<SemanticRelation>> {
-        let rows = sqlx::query("SELECT * FROM relations WHERE source_id = ? OR target_id = ? ORDER BY created_at DESC")
-            .bind(observation_id)
-            .bind(observation_id)
-            .fetch_all(&self.pool)
-            .await?;
-            
+    async fn get_relations(
+        &self,
+        observation_id: &ObservationId,
+    ) -> anyhow::Result<Vec<SemanticRelation>> {
+        let rows = sqlx::query(
+            "SELECT * FROM relations WHERE source_id = ? OR target_id = ? ORDER BY created_at DESC",
+        )
+        .bind(observation_id)
+        .bind(observation_id)
+        .fetch_all(&self.pool)
+        .await?;
+
         let mut relations = Vec::new();
         for row in rows {
             let conf: f64 = row.get("confidence");
@@ -595,10 +677,14 @@ impl Storage for SqliteStorage {
                 id: row.get("id"),
                 source_id: row.get("source_id"),
                 target_id: row.get("target_id"),
-                relation_type: serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("relation_type")))?,
+                relation_type: serde_json::from_str(&format!(
+                    "\"{}\"",
+                    row.get::<String, _>("relation_type")
+                ))?,
                 confidence: conf as f32,
                 reasoning: row.get("reasoning"),
-                created_at: DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc),
+                created_at: DateTime::parse_from_rfc3339(row.get("created_at"))?
+                    .with_timezone(&Utc),
                 judged_by: row.get("judged_by"),
             });
         }
