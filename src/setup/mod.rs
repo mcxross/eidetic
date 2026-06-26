@@ -348,7 +348,7 @@ async fn setup_memwal() -> Result<()> {
 
     loop {
         match auth_manager.memwal_client().await {
-            Ok(client) => {
+            Ok(_client) => {
                 println!("Success! Memwal account provisioned.");
                 let snap = auth_manager.config_snapshot().await?;
                 if let Some(account_id) = snap.memwal_account_id {

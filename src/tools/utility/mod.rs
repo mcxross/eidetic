@@ -10,4 +10,3 @@ pub use mem_memwal_config::MemMemwalConfig;
 pub use mem_select_sui_account::MemSelectSuiAccount;
 pub use mem_stats::MemStats;
 pub use mem_sui_accounts::MemSuiAccounts;
-pub use status::EideticStatus;

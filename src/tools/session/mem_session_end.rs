@@ -69,7 +69,7 @@ impl MemSessionEnd {
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Ended session: {} (duration: {} minutes)",
             session_id,
-            (session.ended_at.unwrap() - session.started_at).num_minutes()
+            (session.ended_at.unwrap_or_else(Utc::now) - session.started_at).num_minutes()
         ))]))
     }
 }

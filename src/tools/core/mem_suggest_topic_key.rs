@@ -74,7 +74,7 @@ impl MemSuggestTopicKey {
             }
         }
 
-        similar.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        similar.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let similar_topics: Vec<TopicKey> = similar.into_iter().take(5).map(|(t, _)| t).collect();
 
         let confidence = if similar_topics.is_empty() { 0.8 } else { 0.6 };

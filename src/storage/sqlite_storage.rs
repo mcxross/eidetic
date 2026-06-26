@@ -232,11 +232,10 @@ impl Storage for SqliteStorage {
         if let Some(row) = row {
             let created_at =
                 DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let ended_at = row.get::<Option<String>, _>("updated_at").map(|s| {
-                DateTime::parse_from_rfc3339(&s)
-                    .unwrap()
-                    .with_timezone(&Utc)
-            });
+            let ended_at = row
+                .get::<Option<String>, _>("updated_at")
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
 
             Ok(Some(Session {
                 id: row.get("id"),
@@ -373,24 +372,21 @@ impl Storage for SqliteStorage {
             let last_seen_at =
                 DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
 
-            let reviewed_at = row.get::<Option<String>, _>("reviewed_at").map(|s| {
-                DateTime::parse_from_rfc3339(&s)
-                    .unwrap()
-                    .with_timezone(&Utc)
-            });
-            let review_after = row.get::<Option<String>, _>("review_after").map(|s| {
-                DateTime::parse_from_rfc3339(&s)
-                    .unwrap()
-                    .with_timezone(&Utc)
-            });
-            let deleted_at = row.get::<Option<String>, _>("deleted_at").map(|s| {
-                DateTime::parse_from_rfc3339(&s)
-                    .unwrap()
-                    .with_timezone(&Utc)
-            });
+            let reviewed_at = row
+                .get::<Option<String>, _>("reviewed_at")
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
+            let review_after = row
+                .get::<Option<String>, _>("review_after")
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
+            let deleted_at = row
+                .get::<Option<String>, _>("deleted_at")
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                .map(|dt| dt.with_timezone(&Utc));
             let deleted_mode = row
                 .get::<Option<String>, _>("deleted_mode")
-                .map(|s| serde_json::from_str(&format!("\"{}\"", s)).unwrap());
+                .and_then(|s| serde_json::from_str(&format!("\"{}\"", s)).ok());
             let related_observations: Vec<String> =
                 serde_json::from_str(row.get("related_observations"))?;
 
@@ -500,7 +496,11 @@ impl Storage for SqliteStorage {
             }
         }
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         Ok(results)
     }
 

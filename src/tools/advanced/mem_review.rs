@@ -92,7 +92,7 @@ impl MemReview {
                     Ok(CallToolResult::success(vec![Content::text(format!(
                         "Observation {} marked as reviewed. Next review scheduled for {}",
                         obs_id,
-                        obs.review_after.unwrap().to_rfc3339()
+                        obs.review_after.unwrap_or_else(Utc::now).to_rfc3339()
                     ))]))
                 } else {
                     Err(McpError::invalid_params(
