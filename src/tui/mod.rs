@@ -97,11 +97,9 @@ pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
                                     let _ = app.load_observations().await;
                                 }
                             }
-                            Tab::Sessions => {
-                                if app.session_page > 0 {
-                                    app.session_page -= 1;
-                                    let _ = app.load_sessions().await;
-                                }
+                            Tab::Sessions if app.session_page > 0 => {
+                                app.session_page -= 1;
+                                let _ = app.load_sessions().await;
                             }
                             _ => {}
                         },

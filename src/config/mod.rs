@@ -56,12 +56,12 @@ impl EideticConfig {
 
     pub async fn save(&self) -> Result<()> {
         let path = Self::config_path()?;
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .await
-                    .context("Failed to create config directory")?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent)
+                .await
+                .context("Failed to create config directory")?;
         }
 
         let content = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
@@ -75,7 +75,6 @@ impl EideticConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
 
     #[test]
     fn test_default_config() {
@@ -113,8 +112,10 @@ mod tests {
 
     #[test]
     fn test_partial_update_serialization() {
-        let mut config = EideticConfig::default();
-        config.private_key = Some("suiprivkey123".to_string());
+        let config = EideticConfig {
+            private_key: Some("suiprivkey123".to_string()),
+            ..Default::default()
+        };
 
         let serialized = serde_json::to_string(&config).unwrap();
         let json_val: serde_json::Value = serde_json::from_str(&serialized).unwrap();

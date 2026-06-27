@@ -116,7 +116,7 @@ impl App {
     pub async fn load_observations(&mut self) -> anyhow::Result<()> {
         if let Some(proj) = &self.active_project {
             let mut all = self.storage.list_observations(&proj.id).await?;
-            all.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            all.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
             let start = self.observation_page * self.page_size;
             if start < all.len() {
                 self.observations =
@@ -134,7 +134,7 @@ impl App {
     pub async fn load_sessions(&mut self) -> anyhow::Result<()> {
         if let Some(proj) = &self.active_project {
             let mut all = self.storage.list_sessions(&proj.id).await?;
-            all.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+            all.sort_by_key(|b| std::cmp::Reverse(b.started_at));
             let start = self.session_page * self.page_size;
             if start < all.len() {
                 self.sessions =

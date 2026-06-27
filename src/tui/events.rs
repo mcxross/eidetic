@@ -13,10 +13,10 @@ pub fn spawn_event_loop(tick_rate: Duration) -> mpsc::UnboundedReceiver<AppEvent
     std::thread::spawn(move || {
         loop {
             if event::poll(tick_rate).unwrap_or(false) {
-                if let Ok(Event::Key(key)) = event::read() {
-                    if tx.send(AppEvent::Key(key)).is_err() {
-                        return; // receiver dropped — app exiting
-                    }
+                if let Ok(Event::Key(key)) = event::read()
+                    && tx.send(AppEvent::Key(key)).is_err()
+                {
+                    return; // receiver dropped — app exiting
                 }
             } else if tx.send(AppEvent::Tick).is_err() {
                 return;

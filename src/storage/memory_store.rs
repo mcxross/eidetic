@@ -17,8 +17,8 @@ impl MemoryStore {
         auth_config: MemwalAuthConfig,
     ) -> anyhow::Result<Self> {
         let path = custom_path
-            .map(|p| std::path::PathBuf::from(p))
-            .unwrap_or_else(|| get_storage_path());
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(get_storage_path);
 
         let mut auth_manager = None;
         let storage: Arc<dyn Storage> = match backend.as_str() {
@@ -123,10 +123,10 @@ impl MemoryStore {
                 .to_string()
         });
 
-        if let Some(project_id) = self.detect_project(Some(cwd.clone())).await? {
-            if let Some(project) = self.storage.get_project(&project_id).await? {
-                return Ok(project);
-            }
+        if let Some(project_id) = self.detect_project(Some(cwd.clone())).await?
+            && let Some(project) = self.storage.get_project(&project_id).await?
+        {
+            return Ok(project);
         }
 
         let project = Project::new(

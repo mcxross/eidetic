@@ -51,12 +51,12 @@ fn detect_binary() -> Result<String> {
 }
 
 async fn ensure_parent_dir(path: &Path) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent)
-                .await
-                .context("Failed to create parent directories")?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent)
+            .await
+            .context("Failed to create parent directories")?;
     }
     Ok(())
 }
@@ -189,15 +189,9 @@ async fn setup_opencode() -> Result<()> {
 
 async fn setup_cursor() -> Result<()> {
     let bin = detect_binary()?;
-    let cursor_dir = if cfg!(target_os = "windows") {
-        dirs::home_dir()
-            .context("No home directory")?
-            .join(".cursor")
-    } else {
-        dirs::home_dir()
-            .context("No home directory")?
-            .join(".cursor")
-    };
+    let cursor_dir = dirs::home_dir()
+        .context("No home directory")?
+        .join(".cursor");
 
     let path = cursor_dir.join("mcp.json");
 
@@ -259,7 +253,7 @@ async fn setup_codex() -> Result<()> {
         doc["mcp"] = toml_edit::Item::Table(toml_edit::Table::new());
     }
 
-    if !doc["mcp"].get("eidetic").is_some() {
+    if doc["mcp"].get("eidetic").is_none() {
         let mut eidetic_table = toml_edit::Table::new();
         eidetic_table.insert("command", toml_edit::value(bin.clone()));
         let args = toml_edit::Array::new();

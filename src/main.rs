@@ -144,7 +144,8 @@ async fn main() -> anyhow::Result<()> {
     let storage_path = config.storage_path.clone();
 
     // 4. Run the subcommand
-    let result = match cli.command.unwrap_or(Commands::Serve) {
+
+    match cli.command.unwrap_or(Commands::Serve) {
         Commands::Serve => {
             run_server(
                 backend,
@@ -159,9 +160,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Setup { agent } => setup::run(&agent).await,
         Commands::Update => update::update().await,
         Commands::Info => run_info(config).await,
-    };
-
-    result
+    }
 }
 
 async fn run_info(config: config::EideticConfig) -> anyhow::Result<()> {
@@ -247,15 +246,13 @@ async fn run_server(
     let store = crate::storage::MemoryStore::new(backend, path, auth_config).await?;
 
     // If memwal provisioned a new account, save it
-    if let Some(auth_mgr) = store.auth_manager() {
-        if let Ok(snap) = auth_mgr.config_snapshot().await {
-            if eidetic_config.memwal_account_id != snap.memwal_account_id
-                && snap.memwal_account_id.is_some()
-            {
-                eidetic_config.memwal_account_id = snap.memwal_account_id;
-                config_changed = true;
-            }
-        }
+    if let Some(auth_mgr) = store.auth_manager()
+        && let Ok(snap) = auth_mgr.config_snapshot().await
+        && eidetic_config.memwal_account_id != snap.memwal_account_id
+        && snap.memwal_account_id.is_some()
+    {
+        eidetic_config.memwal_account_id = snap.memwal_account_id;
+        config_changed = true;
     }
 
     if config_changed {

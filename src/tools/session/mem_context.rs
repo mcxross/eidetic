@@ -81,7 +81,7 @@ impl MemContext {
             }
         }
         let mut active_topics: Vec<_> = topic_counts.into_iter().collect();
-        active_topics.sort_by(|a, b| b.1.cmp(&a.1));
+        active_topics.sort_by_key(|b| std::cmp::Reverse(b.1));
         let active_topics: Vec<TopicKey> =
             active_topics.into_iter().take(10).map(|(t, _)| t).collect();
 

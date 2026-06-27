@@ -107,36 +107,34 @@ impl MemSave {
             ))]));
         }
 
-        if let Some(topic) = &params.topic_key {
-            if let Some(existing) = all_obs
+        if let Some(topic) = &params.topic_key
+            && let Some(existing) = all_obs
                 .iter_mut()
                 .find(|o| o.scope == scope && o.topic_key.as_ref() == Some(topic))
-            {
-                existing.content = params.content.clone();
-                existing.hash = content_hash.clone();
-                existing.title = params.title.clone();
-                existing.memory_type = params.memory_type;
-                if let Some(tags) = &params.tags {
-                    existing.tags = tags.clone();
-                }
-                if let Some(metadata) = &params.metadata {
-                    if let Some(obj) = metadata.as_object() {
-                        existing.metadata =
-                            obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-                    }
-                }
-                existing.revision_count += 1;
-                existing.updated_at = chrono::Utc::now();
-                self.store
-                    .storage()
-                    .update_observation(existing)
-                    .await
-                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-                return Ok(CallToolResult::success(vec![Content::text(format!(
-                    "Observation topic upserted: {} (ID: {}, Revisions: {})",
-                    existing.title, existing.id, existing.revision_count
-                ))]));
+        {
+            existing.content = params.content.clone();
+            existing.hash = content_hash.clone();
+            existing.title = params.title.clone();
+            existing.memory_type = params.memory_type;
+            if let Some(tags) = &params.tags {
+                existing.tags = tags.clone();
             }
+            if let Some(metadata) = &params.metadata
+                && let Some(obj) = metadata.as_object()
+            {
+                existing.metadata = obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            }
+            existing.revision_count += 1;
+            existing.updated_at = chrono::Utc::now();
+            self.store
+                .storage()
+                .update_observation(existing)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "Observation topic upserted: {} (ID: {}, Revisions: {})",
+                existing.title, existing.id, existing.revision_count
+            ))]));
         }
 
         let review_after = if let Some(ra) = params.review_after {
@@ -180,10 +178,9 @@ impl MemSave {
                 .storage()
                 .get_prompts(&project_id, active_session.as_ref())
                 .await
+                && let Some(latest) = prompts.first()
             {
-                if let Some(latest) = prompts.first() {
-                    obs.source_prompt = Some(latest.prompt.clone());
-                }
+                obs.source_prompt = Some(latest.prompt.clone());
             }
         }
 
@@ -193,21 +190,20 @@ impl MemSave {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        if let Some(sid) = &obs.session_id {
-            if let Some(mut session) = self
+        if let Some(sid) = &obs.session_id
+            && let Some(mut session) = self
                 .store
                 .storage()
                 .get_session(sid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
-            {
-                session.observation_ids.push(obs.id.clone());
-                self.store
-                    .storage()
-                    .update_session(&session)
-                    .await
-                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-            }
+        {
+            session.observation_ids.push(obs.id.clone());
+            self.store
+                .storage()
+                .update_session(&session)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         }
 
         Ok(CallToolResult::success(vec![Content::text(format!(

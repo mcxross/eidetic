@@ -485,14 +485,14 @@ impl Storage for SqliteStorage {
         for row in rows {
             let id: String = row.get("id");
             let rank: f64 = row.get("rank");
-            if let Some(obs) = self.get_observation(&id).await? {
-                if &obs.project_id == project_id {
-                    results.push(SearchResult {
-                        observation: obs,
-                        score: (1.0 / (1.0 + rank)) as f32,
-                        matched_fields: vec!["content".to_string()],
-                    });
-                }
+            if let Some(obs) = self.get_observation(&id).await?
+                && &obs.project_id == project_id
+            {
+                results.push(SearchResult {
+                    observation: obs,
+                    score: (1.0 / (1.0 + rank)) as f32,
+                    matched_fields: vec!["content".to_string()],
+                });
             }
         }
 
@@ -737,7 +737,7 @@ impl Storage for SqliteStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::types::*;
+
     use chrono::Utc;
     use tempfile::tempdir;
 
@@ -781,7 +781,8 @@ mod tests {
             memory_type: MemoryType::Note,
             scope: Scope::Project,
             title: "Test Note".to_string(),
-            content: "This is a test observation content with some keywords like banana.".to_string(),
+            content: "This is a test observation content with some keywords like banana."
+                .to_string(),
             hash: "testhash".to_string(),
             tags: vec!["test".to_string()],
             metadata: std::collections::HashMap::new(),
@@ -805,14 +806,18 @@ mod tests {
     async fn test_sqlite_project_crud() {
         let (_dir, storage) = setup_db().await;
         let proj = create_test_project();
-        
+
         storage.save_project(&proj).await.unwrap();
-        
+
         let retrieved = storage.get_project(&proj.id).await.unwrap().unwrap();
         assert_eq!(retrieved.name, proj.name);
         assert_eq!(retrieved.path, proj.path);
 
-        let retrieved_by_path = storage.get_project_by_path(&proj.path).await.unwrap().unwrap();
+        let retrieved_by_path = storage
+            .get_project_by_path(&proj.path)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(retrieved_by_path.id, proj.id);
 
         let list = storage.list_projects().await.unwrap();
@@ -873,14 +878,20 @@ mod tests {
         assert_eq!(list.len(), 1);
 
         // Soft delete
-        storage.delete_observation(&obs.id, DeleteMode::Soft).await.unwrap();
+        storage
+            .delete_observation(&obs.id, DeleteMode::Soft)
+            .await
+            .unwrap();
         let soft_deleted = storage.get_observation(&obs.id).await.unwrap().unwrap();
         assert_eq!(soft_deleted.lifecycle, LifecycleState::Deleted);
         assert!(soft_deleted.deleted_at.is_some());
         assert_eq!(soft_deleted.deleted_mode, Some(DeleteMode::Soft));
 
         // Hard delete
-        storage.delete_observation(&obs.id, DeleteMode::Hard).await.unwrap();
+        storage
+            .delete_observation(&obs.id, DeleteMode::Hard)
+            .await
+            .unwrap();
         let hard_deleted = storage.get_observation(&obs.id).await.unwrap();
         assert!(hard_deleted.is_none());
     }
@@ -899,11 +910,17 @@ mod tests {
         obs2.content = "Contains the keyword apple instead.".to_string();
         storage.save_observation(&obs2).await.unwrap();
 
-        let search_results = storage.search_observations(&proj.id, "banana", 10).await.unwrap();
+        let search_results = storage
+            .search_observations(&proj.id, "banana", 10)
+            .await
+            .unwrap();
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].observation.id, "obs_1");
 
-        let search_results2 = storage.search_observations(&proj.id, "apple", 10).await.unwrap();
+        let search_results2 = storage
+            .search_observations(&proj.id, "apple", 10)
+            .await
+            .unwrap();
         assert_eq!(search_results2.len(), 1);
         assert_eq!(search_results2[0].observation.id, "obs_2");
     }

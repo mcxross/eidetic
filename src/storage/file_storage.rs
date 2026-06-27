@@ -53,12 +53,11 @@ impl FileStorage {
         let obs_dir = self.base_path.join("observations");
         if obs_dir.exists() {
             for entry in WalkDir::new(&obs_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().map_or(false, |ext| ext == "json") {
-                    if let Ok(content) = fs::read_to_string(entry.path()).await {
-                        if let Ok(obs) = serde_json::from_str::<Observation>(&content) {
-                            self.observations.insert(obs.id.clone(), obs);
-                        }
-                    }
+                if entry.path().extension().is_some_and(|ext| ext == "json")
+                    && let Ok(content) = fs::read_to_string(entry.path()).await
+                    && let Ok(obs) = serde_json::from_str::<Observation>(&content)
+                {
+                    self.observations.insert(obs.id.clone(), obs);
                 }
             }
         }
@@ -66,12 +65,11 @@ impl FileStorage {
         let sess_dir = self.base_path.join("sessions");
         if sess_dir.exists() {
             for entry in WalkDir::new(&sess_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().map_or(false, |ext| ext == "json") {
-                    if let Ok(content) = fs::read_to_string(entry.path()).await {
-                        if let Ok(sess) = serde_json::from_str::<Session>(&content) {
-                            self.sessions.insert(sess.id.clone(), sess);
-                        }
-                    }
+                if entry.path().extension().is_some_and(|ext| ext == "json")
+                    && let Ok(content) = fs::read_to_string(entry.path()).await
+                    && let Ok(sess) = serde_json::from_str::<Session>(&content)
+                {
+                    self.sessions.insert(sess.id.clone(), sess);
                 }
             }
         }
@@ -79,12 +77,11 @@ impl FileStorage {
         let proj_dir = self.base_path.join("projects");
         if proj_dir.exists() {
             for entry in WalkDir::new(&proj_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().map_or(false, |ext| ext == "json") {
-                    if let Ok(content) = fs::read_to_string(entry.path()).await {
-                        if let Ok(proj) = serde_json::from_str::<Project>(&content) {
-                            self.projects.insert(proj.id.clone(), proj);
-                        }
-                    }
+                if entry.path().extension().is_some_and(|ext| ext == "json")
+                    && let Ok(content) = fs::read_to_string(entry.path()).await
+                    && let Ok(proj) = serde_json::from_str::<Project>(&content)
+                {
+                    self.projects.insert(proj.id.clone(), proj);
                 }
             }
         }
@@ -92,12 +89,11 @@ impl FileStorage {
         let prompt_dir = self.base_path.join("prompts");
         if prompt_dir.exists() {
             for entry in WalkDir::new(&prompt_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().map_or(false, |ext| ext == "json") {
-                    if let Ok(content) = fs::read_to_string(entry.path()).await {
-                        if let Ok(prompt) = serde_json::from_str::<SavedPrompt>(&content) {
-                            self.prompts.insert(prompt.id.clone(), prompt);
-                        }
-                    }
+                if entry.path().extension().is_some_and(|ext| ext == "json")
+                    && let Ok(content) = fs::read_to_string(entry.path()).await
+                    && let Ok(prompt) = serde_json::from_str::<SavedPrompt>(&content)
+                {
+                    self.prompts.insert(prompt.id.clone(), prompt);
                 }
             }
         }
@@ -105,12 +101,11 @@ impl FileStorage {
         let rel_dir = self.base_path.join("relations");
         if rel_dir.exists() {
             for entry in WalkDir::new(&rel_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().map_or(false, |ext| ext == "json") {
-                    if let Ok(content) = fs::read_to_string(entry.path()).await {
-                        if let Ok(rel) = serde_json::from_str::<SemanticRelation>(&content) {
-                            self.relations.insert(rel.id.clone(), rel);
-                        }
-                    }
+                if entry.path().extension().is_some_and(|ext| ext == "json")
+                    && let Ok(content) = fs::read_to_string(entry.path()).await
+                    && let Ok(rel) = serde_json::from_str::<SemanticRelation>(&content)
+                {
+                    self.relations.insert(rel.id.clone(), rel);
                 }
             }
         }
@@ -232,11 +227,11 @@ impl Storage for FileStorage {
                 }
             }
 
-            if let Some(topic) = &obs.topic_key {
-                if topic.to_lowercase().contains(&query_lower) {
-                    score += 7.0;
-                    matched.push("topic_key".to_string());
-                }
+            if let Some(topic) = &obs.topic_key
+                && topic.to_lowercase().contains(&query_lower)
+            {
+                score += 7.0;
+                matched.push("topic_key".to_string());
             }
 
             if score > 0.0 {
@@ -300,7 +295,7 @@ impl Storage for FileStorage {
             .map(|o| o.clone())
             .collect();
 
-        obs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        obs.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         obs.truncate(limit);
         Ok(obs)
     }
@@ -314,19 +309,19 @@ impl Storage for FileStorage {
                 continue;
             }
 
-            if let Some(review_after) = obs.review_after {
-                if review_after <= now {
-                    let days_stale = (now - review_after).num_days();
-                    items.push(ReviewItem {
-                        observation: obs.clone(),
-                        days_stale,
-                        review_after,
-                    });
-                }
+            if let Some(review_after) = obs.review_after
+                && review_after <= now
+            {
+                let days_stale = (now - review_after).num_days();
+                items.push(ReviewItem {
+                    observation: obs.clone(),
+                    days_stale,
+                    review_after,
+                });
             }
         }
 
-        items.sort_by(|a, b| b.days_stale.cmp(&a.days_stale));
+        items.sort_by_key(|b| std::cmp::Reverse(b.days_stale));
         Ok(items)
     }
 
@@ -365,7 +360,7 @@ impl Storage for FileStorage {
             .map(|s| s.clone())
             .collect();
 
-        sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+        sessions.sort_by_key(|b| std::cmp::Reverse(b.started_at));
         sessions.truncate(limit);
         Ok(sessions)
     }
@@ -416,7 +411,7 @@ impl Storage for FileStorage {
             .iter()
             .filter(|p| {
                 p.project_id == *project_id
-                    && session_id.map_or(true, |sid| p.session_id.as_ref() == Some(sid))
+                    && session_id.is_none_or(|sid| p.session_id.as_ref() == Some(sid))
             })
             .map(|p| p.clone())
             .collect())
@@ -556,7 +551,7 @@ use serde::Serialize;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::types::*;
+
     use tempfile::tempdir;
 
     async fn setup_db() -> (tempfile::TempDir, FileStorage) {
@@ -599,7 +594,8 @@ mod tests {
             memory_type: MemoryType::Note,
             scope: Scope::Project,
             title: "Test Note".to_string(),
-            content: "This is a test observation content with some keywords like banana.".to_string(),
+            content: "This is a test observation content with some keywords like banana."
+                .to_string(),
             hash: "testhash".to_string(),
             tags: vec!["test".to_string()],
             metadata: std::collections::HashMap::new(),
@@ -623,14 +619,18 @@ mod tests {
     async fn test_file_project_crud() {
         let (_dir, storage) = setup_db().await;
         let proj = create_test_project();
-        
+
         storage.save_project(&proj).await.unwrap();
-        
+
         let retrieved = storage.get_project(&proj.id).await.unwrap().unwrap();
         assert_eq!(retrieved.name, proj.name);
         assert_eq!(retrieved.path, proj.path);
 
-        let retrieved_by_path = storage.get_project_by_path(&proj.path).await.unwrap().unwrap();
+        let retrieved_by_path = storage
+            .get_project_by_path(&proj.path)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(retrieved_by_path.id, proj.id);
 
         let list = storage.list_projects().await.unwrap();
@@ -690,14 +690,20 @@ mod tests {
         assert_eq!(list.len(), 1);
 
         // Soft delete
-        storage.delete_observation(&obs.id, DeleteMode::Soft).await.unwrap();
+        storage
+            .delete_observation(&obs.id, DeleteMode::Soft)
+            .await
+            .unwrap();
         let soft_deleted = storage.get_observation(&obs.id).await.unwrap().unwrap();
         assert_eq!(soft_deleted.lifecycle, LifecycleState::Deleted);
         assert!(soft_deleted.deleted_at.is_some());
         assert_eq!(soft_deleted.deleted_mode, Some(DeleteMode::Soft));
 
         // Hard delete
-        storage.delete_observation(&obs.id, DeleteMode::Hard).await.unwrap();
+        storage
+            .delete_observation(&obs.id, DeleteMode::Hard)
+            .await
+            .unwrap();
         let hard_deleted = storage.get_observation(&obs.id).await.unwrap();
         assert!(hard_deleted.is_none());
     }
@@ -716,11 +722,17 @@ mod tests {
         obs2.content = "Contains the keyword apple instead.".to_string();
         storage.save_observation(&obs2).await.unwrap();
 
-        let search_results = storage.search_observations(&proj.id, "banana", 10).await.unwrap();
+        let search_results = storage
+            .search_observations(&proj.id, "banana", 10)
+            .await
+            .unwrap();
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].observation.id, "obs_1");
 
-        let search_results2 = storage.search_observations(&proj.id, "apple", 10).await.unwrap();
+        let search_results2 = storage
+            .search_observations(&proj.id, "apple", 10)
+            .await
+            .unwrap();
         assert_eq!(search_results2.len(), 1);
         assert_eq!(search_results2[0].observation.id, "obs_2");
     }

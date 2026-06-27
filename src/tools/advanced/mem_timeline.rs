@@ -54,7 +54,7 @@ impl MemTimeline {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        all_obs.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        all_obs.sort_by_key(|a| a.created_at);
 
         let target_idx = all_obs
             .iter()

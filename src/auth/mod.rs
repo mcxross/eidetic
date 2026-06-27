@@ -295,15 +295,15 @@ impl AuthManager {
             find_account(sui_state, active_address).cloned()
         };
 
-        if let Some(account) = default_account {
-            if let Some(suiprivkey) = account.suiprivkey {
-                let mut state = self.state.write().await;
-                state.selected = Some(SelectedAccount {
-                    address: account.address,
-                    alias: account.alias,
-                    suiprivkey,
-                });
-            }
+        if let Some(account) = default_account
+            && let Some(suiprivkey) = account.suiprivkey
+        {
+            let mut state = self.state.write().await;
+            state.selected = Some(SelectedAccount {
+                address: account.address,
+                alias: account.alias,
+                suiprivkey,
+            });
         }
         Ok(())
     }
@@ -362,19 +362,17 @@ fn load_sui_config(config_dir: Option<PathBuf>) -> anyhow::Result<SuiConfigState
             keystore_path.display()
         ));
     }
-    if let Some(active_address) = &active_address {
-        if !accounts
+    if let Some(active_address) = &active_address
+        && !accounts
             .iter()
             .any(|account| account.address.eq_ignore_ascii_case(active_address))
-        {
-            accounts.push(ParsedSuiAccount {
-                address: normalize_address(active_address),
-                alias: None,
-                suiprivkey: None,
-                status: "active address found in client.yaml but no matching key was found"
-                    .to_string(),
-            });
-        }
+    {
+        accounts.push(ParsedSuiAccount {
+            address: normalize_address(active_address),
+            alias: None,
+            suiprivkey: None,
+            status: "active address found in client.yaml but no matching key was found".to_string(),
+        });
     }
 
     Ok(SuiConfigState {

@@ -104,8 +104,8 @@ impl Storage for MemwalStorage {
         let mut results = Vec::new();
         let mut seen = HashSet::new();
 
-        if let Ok(client) = self.auth.memwal_client().await {
-            if let Ok(recall) = client
+        if let Ok(client) = self.auth.memwal_client().await
+            && let Ok(recall) = client
                 .recall(RecallParams {
                     query: query.to_string(),
                     limit: Some(limit),
@@ -114,20 +114,18 @@ impl Storage for MemwalStorage {
                     max_distance: None,
                 })
                 .await
-            {
-                for memory in recall.results {
-                    if let Some(obs) = parse_observation_payload(&memory.text) {
-                        if &obs.project_id == project_id
-                            && obs.lifecycle != LifecycleState::Deleted
-                            && seen.insert(obs.id.clone())
-                        {
-                            results.push(SearchResult {
-                                observation: obs,
-                                score: (1.0 / (1.0 + memory.distance)) as f32,
-                                matched_fields: vec!["memwal".to_string()],
-                            });
-                        }
-                    }
+        {
+            for memory in recall.results {
+                if let Some(obs) = parse_observation_payload(&memory.text)
+                    && &obs.project_id == project_id
+                    && obs.lifecycle != LifecycleState::Deleted
+                    && seen.insert(obs.id.clone())
+                {
+                    results.push(SearchResult {
+                        observation: obs,
+                        score: (1.0 / (1.0 + memory.distance)) as f32,
+                        matched_fields: vec!["memwal".to_string()],
+                    });
                 }
             }
         }
