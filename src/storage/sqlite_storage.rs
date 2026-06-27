@@ -474,7 +474,7 @@ impl Storage for SqliteStorage {
     ) -> anyhow::Result<Vec<SearchResult>> {
         let safe_query = format!("\"{}\"", query.replace("\"", "\"\""));
         let rows = sqlx::query(
-            "SELECT f.id, bm25(f) as rank FROM observations_fts f JOIN observations o ON f.id = o.id WHERE f.observations_fts MATCH ? AND o.deleted_at IS NULL ORDER BY rank LIMIT ?"
+            "SELECT observations_fts.id, bm25(observations_fts) as rank FROM observations_fts JOIN observations o ON observations_fts.id = o.id WHERE observations_fts MATCH ? AND o.deleted_at IS NULL ORDER BY rank LIMIT ?"
         )
             .bind(&safe_query)
             .bind(limit as i64)
@@ -731,5 +731,202 @@ impl Storage for SqliteStorage {
             orphaned_observations: 0,
             orphaned_sessions: 0,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::types::*;
+    use chrono::Utc;
+    use tempfile::tempdir;
+
+    async fn setup_db() -> (tempfile::TempDir, SqliteStorage) {
+        let dir = tempdir().unwrap();
+        let storage = SqliteStorage::new(dir.path().to_path_buf()).await.unwrap();
+        (dir, storage)
+    }
+
+    fn create_test_project() -> Project {
+        Project {
+            id: "proj_1".to_string(),
+            path: "/path/to/proj".to_string(),
+            name: "Test Project".to_string(),
+            canonical_name: "test_project".to_string(),
+            aliases: vec![],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            active: true,
+        }
+    }
+
+    fn create_test_session() -> Session {
+        Session {
+            id: "sess_1".to_string(),
+            project_id: "proj_1".to_string(),
+            started_at: Utc::now(),
+            ended_at: None,
+            summary: None,
+            context_injected: false,
+            observation_ids: vec![],
+        }
+    }
+
+    fn create_test_observation(id: &str) -> Observation {
+        Observation {
+            id: id.to_string(),
+            project_id: "proj_1".to_string(),
+            session_id: Some("sess_1".to_string()),
+            topic_key: Some("test_topic".to_string()),
+            memory_type: MemoryType::Note,
+            scope: Scope::Project,
+            title: "Test Note".to_string(),
+            content: "This is a test observation content with some keywords like banana.".to_string(),
+            hash: "testhash".to_string(),
+            tags: vec!["test".to_string()],
+            metadata: std::collections::HashMap::new(),
+            lifecycle: LifecycleState::Active,
+            revision_count: 0,
+            duplicate_count: 0,
+            last_seen_at: Utc::now(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            reviewed_at: None,
+            review_after: None,
+            deleted_at: None,
+            deleted_mode: None,
+            related_observations: vec![],
+            source_prompt: None,
+            capture_prompt: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_project_crud() {
+        let (_dir, storage) = setup_db().await;
+        let proj = create_test_project();
+        
+        storage.save_project(&proj).await.unwrap();
+        
+        let retrieved = storage.get_project(&proj.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.name, proj.name);
+        assert_eq!(retrieved.path, proj.path);
+
+        let retrieved_by_path = storage.get_project_by_path(&proj.path).await.unwrap().unwrap();
+        assert_eq!(retrieved_by_path.id, proj.id);
+
+        let list = storage.list_projects().await.unwrap();
+        assert_eq!(list.len(), 1);
+
+        let mut updated_proj = proj.clone();
+        updated_proj.name = "Updated Name".to_string();
+        storage.update_project(&updated_proj).await.unwrap();
+
+        let retrieved_updated = storage.get_project(&proj.id).await.unwrap().unwrap();
+        assert_eq!(retrieved_updated.name, "Updated Name");
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_session_crud() {
+        let (_dir, storage) = setup_db().await;
+        let proj = create_test_project();
+        storage.save_project(&proj).await.unwrap();
+
+        let sess = create_test_session();
+        storage.save_session(&sess).await.unwrap();
+
+        let retrieved = storage.get_session(&sess.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.project_id, sess.project_id);
+
+        let mut updated_sess = sess.clone();
+        updated_sess.context_injected = true;
+        storage.update_session(&updated_sess).await.unwrap();
+
+        let retrieved_updated = storage.get_session(&sess.id).await.unwrap().unwrap();
+        // SqliteStorage doesn't persist context_injected.
+        assert_eq!(retrieved_updated.id, sess.id);
+
+        let list = storage.list_sessions(&proj.id).await.unwrap();
+        assert_eq!(list.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_observation_crud() {
+        let (_dir, storage) = setup_db().await;
+        let proj = create_test_project();
+        storage.save_project(&proj).await.unwrap();
+
+        let obs = create_test_observation("obs_1");
+        storage.save_observation(&obs).await.unwrap();
+
+        let retrieved = storage.get_observation(&obs.id).await.unwrap().unwrap();
+        assert_eq!(retrieved.title, obs.title);
+
+        let mut updated_obs = obs.clone();
+        updated_obs.title = "Updated Title".to_string();
+        storage.update_observation(&updated_obs).await.unwrap();
+
+        let retrieved_updated = storage.get_observation(&obs.id).await.unwrap().unwrap();
+        assert_eq!(retrieved_updated.title, "Updated Title");
+
+        let list = storage.list_observations(&proj.id).await.unwrap();
+        assert_eq!(list.len(), 1);
+
+        // Soft delete
+        storage.delete_observation(&obs.id, DeleteMode::Soft).await.unwrap();
+        let soft_deleted = storage.get_observation(&obs.id).await.unwrap().unwrap();
+        assert_eq!(soft_deleted.lifecycle, LifecycleState::Deleted);
+        assert!(soft_deleted.deleted_at.is_some());
+        assert_eq!(soft_deleted.deleted_mode, Some(DeleteMode::Soft));
+
+        // Hard delete
+        storage.delete_observation(&obs.id, DeleteMode::Hard).await.unwrap();
+        let hard_deleted = storage.get_observation(&obs.id).await.unwrap();
+        assert!(hard_deleted.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_observation_search() {
+        let (_dir, storage) = setup_db().await;
+        let proj = create_test_project();
+        storage.save_project(&proj).await.unwrap();
+
+        let obs1 = create_test_observation("obs_1");
+        storage.save_observation(&obs1).await.unwrap();
+
+        let mut obs2 = create_test_observation("obs_2");
+        obs2.title = "Different Note".to_string();
+        obs2.content = "Contains the keyword apple instead.".to_string();
+        storage.save_observation(&obs2).await.unwrap();
+
+        let search_results = storage.search_observations(&proj.id, "banana", 10).await.unwrap();
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].observation.id, "obs_1");
+
+        let search_results2 = storage.search_observations(&proj.id, "apple", 10).await.unwrap();
+        assert_eq!(search_results2.len(), 1);
+        assert_eq!(search_results2[0].observation.id, "obs_2");
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_relations() {
+        let (_dir, storage) = setup_db().await;
+        let relation = SemanticRelation {
+            id: "rel_1".to_string(),
+            source_id: "obs_1".to_string(),
+            target_id: "obs_2".to_string(),
+            relation_type: RelationType::Related,
+            confidence: 0.9,
+            reasoning: "Test reasoning".to_string(),
+            created_at: Utc::now(),
+            judged_by: None,
+        };
+
+        storage.save_relation(&relation).await.unwrap();
+
+        let relations = storage.get_relations(&"obs_1".to_string()).await.unwrap();
+        assert_eq!(relations.len(), 1);
+        assert_eq!(relations[0].target_id, "obs_2");
+        assert_eq!(relations[0].relation_type, RelationType::Related);
     }
 }

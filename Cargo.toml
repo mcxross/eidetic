@@ -33,3 +33,6 @@ memwal-core = { package = "memwal-core", git = "https://github.com/mcxross/memwa
 allocative = "=0.3.4"
 self_update = { version = "0.44.0", features = ["archive-tar", "compression-flate2"] }
 openssl = { version = "0.10.81", features = ["vendored"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

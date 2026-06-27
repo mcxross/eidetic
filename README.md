@@ -103,7 +103,7 @@ eidetic serve
 By default, the server uses a SQLite database to store memories locally.
 
 ### Configuration
-Eidetic persists its configuration in `~/.eidetic/config.toml`. This includes your storage backend preferences, custom paths, and Memwal configurations.
+Eidetic persists its configuration in `~/.eidetic/config.json`. This includes your storage backend preferences, custom paths, and Memwal configurations.
 
 You can view the active configuration and backend details via:
 ```bash
