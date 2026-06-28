@@ -291,6 +291,23 @@ eidetic tui
 *   `r` - Mark an observation as reviewed
 *   `/` - Open search
 
+## Debugging and Inspector
+
+If you want to manually inspect and debug the Eidetic MCP server, you can use the official MCP Inspector.
+
+To run the inspector using `npx`:
+```bash
+npx @modelcontextprotocol/inspector eidetic serve
+```
+If you are developing locally from source, you can also run:
+```bash
+npx @modelcontextprotocol/inspector cargo run -- serve
+```
+
+For more details on inspecting and debugging, please refer to the official MCP documentation:
+- [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector)
+- [MCP Debugging](https://modelcontextprotocol.io/docs/tools/debugging)
+
 ---
 
 ## License
