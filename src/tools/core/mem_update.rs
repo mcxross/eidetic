@@ -56,13 +56,14 @@ impl MemUpdate {
                 McpError::invalid_params(format!("Observation not found: {}", params.id), None)
             })?;
 
-        if let Some(ref metadata) = params.metadata {
-            if !metadata.is_null() && !metadata.is_object() {
-                return Err(McpError::invalid_params(
-                    "metadata must be a JSON object, not an array or primitive",
-                    None,
-                ));
-            }
+        if let Some(ref metadata) = params.metadata
+            && !metadata.is_null()
+            && !metadata.is_object()
+        {
+            return Err(McpError::invalid_params(
+                "metadata must be a JSON object, not an array or primitive",
+                None,
+            ));
         }
 
         if let Some(title) = params.title {

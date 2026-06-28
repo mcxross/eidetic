@@ -105,8 +105,12 @@ impl FileStorage {
                 if entry.path().extension().is_some_and(|ext| ext == "json") {
                     match fs::read_to_string(entry.path()).await {
                         Ok(content) => match serde_json::from_str::<SemanticRelation>(&content) {
-                            Ok(rel) => { self.relations.insert(rel.id.clone(), rel); }
-                            Err(e) => warn!("Failed to parse relation file {:?}: {}", entry.path(), e),
+                            Ok(rel) => {
+                                self.relations.insert(rel.id.clone(), rel);
+                            }
+                            Err(e) => {
+                                warn!("Failed to parse relation file {:?}: {}", entry.path(), e)
+                            }
                         },
                         Err(e) => warn!("Failed to read relation file {:?}: {}", entry.path(), e),
                     }

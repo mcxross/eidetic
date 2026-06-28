@@ -83,10 +83,10 @@ impl MemSessionSummary {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         // Only clear current session if the target session was the active one
-        if let Some(current) = self.store.get_current_session().await {
-            if current == session_id {
-                self.store.clear_current_session().await;
-            }
+        if let Some(current) = self.store.get_current_session().await
+            && current == session_id
+        {
+            self.store.clear_current_session().await;
         }
 
         Ok(CallToolResult::success(vec![Content::text(format!(

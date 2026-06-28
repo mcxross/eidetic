@@ -62,13 +62,14 @@ impl MemSave {
         if params.content.trim().is_empty() {
             return Err(McpError::invalid_params("content must not be empty", None));
         }
-        if let Some(ref metadata) = params.metadata {
-            if !metadata.is_null() && !metadata.is_object() {
-                return Err(McpError::invalid_params(
-                    "metadata must be a JSON object, not an array or primitive",
-                    None,
-                ));
-            }
+        if let Some(ref metadata) = params.metadata
+            && !metadata.is_null()
+            && !metadata.is_object()
+        {
+            return Err(McpError::invalid_params(
+                "metadata must be a JSON object, not an array or primitive",
+                None,
+            ));
         }
         if let Some(ref sid) = params.session_id {
             let session_exists = self

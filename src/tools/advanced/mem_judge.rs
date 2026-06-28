@@ -56,7 +56,10 @@ impl MemJudge {
 
         // TODO: Persist verdict once Storage trait supports get_relation_by_id / update_relation.
         // Currently, we validate inputs and acknowledge the verdict but cannot persist it.
-        warn!("mem_judge: verdict persistence not yet implemented — relation_id={}, verdict={}", params.relation_id, verdict);
+        warn!(
+            "mem_judge: verdict persistence not yet implemented — relation_id={}, verdict={}",
+            params.relation_id, verdict
+        );
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Recorded verdict '{}' for relation {} (note: relation persistence pending trait extension)",
