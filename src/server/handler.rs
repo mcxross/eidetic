@@ -285,22 +285,17 @@ impl EideticServer {
 #[tool_handler]
 impl ServerHandler for EideticServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: rmcp::model::ProtocolVersion::V_2025_06_18,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "eidetic-mcp-server".into(),
-                version: env!("CARGO_PKG_VERSION").into(),
-                title: None,
-                description: Some(
-                    "Eidetic MCP Server - Memory management for agentic workflows".into(),
-                ),
-                icons: None,
-                website_url: None,
-            },
-            instructions: Some(
-                "Eidetic MCP Server handles project memory and observation storage.".into(),
-            ),
-        }
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
+        )
+        .with_server_info(
+            Implementation::new("eidetic-mcp-server", env!("CARGO_PKG_VERSION"))
+                .with_description("Eidetic MCP Server - Memory management for agentic workflows"),
+        )
+        .with_protocol_version(rmcp::model::ProtocolVersion::V_2025_06_18)
+        .with_instructions("Eidetic MCP Server handles project memory and observation storage.")
     }
 }
