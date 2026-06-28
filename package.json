@@ -25,7 +25,8 @@
     "README.md"
   ],
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "inspect": "npx @modelcontextprotocol/inspector eidetic serve"
   },
   "engines": {
     "node": ">=18"
