@@ -28,20 +28,35 @@ impl MemStats {
         &self,
         Parameters(params): Parameters<MemStatsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let project = if let Some(pid) = params.project_id {
+        let project = if let Some(ref pid) = params.project_id {
             self.store
                 .storage()
-                .get_project(&pid)
+                .get_project(pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 .ok_or_else(|| {
                     McpError::invalid_params(format!("Project not found: {}", pid), None)
                 })?
         } else {
-            self.store
-                .get_or_create_project(None)
+            let project_id = self
+                .store
+                .detect_project(None)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        "No project detected. Provide project_id or run from a project directory.",
+                        None,
+                    )
+                })?;
+            self.store
+                .storage()
+                .get_project(&project_id)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .ok_or_else(|| {
+                    McpError::invalid_params("Detected project not found in storage", None)
+                })?
         };
 
         let stats = self

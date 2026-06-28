@@ -44,9 +44,8 @@ impl MemTimeline {
             })?;
 
         let project_id = obs.project_id.clone();
-        let _target_time = obs.created_at;
 
-        let limit = params.context_limit.unwrap_or(5);
+        let limit = params.context_limit.unwrap_or(5).min(50);
         let mut all_obs = self
             .store
             .storage()

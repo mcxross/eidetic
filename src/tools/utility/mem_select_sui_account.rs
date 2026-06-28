@@ -29,9 +29,13 @@ impl MemSelectSuiAccount {
         &self,
         Parameters(params): Parameters<MemSelectSuiAccountParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.selector.trim().is_empty() {
+            return Err(McpError::invalid_params("selector must not be empty", None));
+        }
+
         let auth = self.store.auth_manager().ok_or_else(|| {
-            McpError::invalid_params(
-                "Memwal auth is only available with --storage-backend memwal",
+            McpError::internal_error(
+                "Memwal backend not configured. Start the server with --storage-backend memwal to use this tool.",
                 None,
             )
         })?;

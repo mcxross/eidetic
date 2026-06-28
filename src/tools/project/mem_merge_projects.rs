@@ -30,6 +30,13 @@ impl MemMergeProjects {
         &self,
         Parameters(params): Parameters<MemMergeProjectsParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.alias_project_ids.contains(&params.canonical_project_id) {
+            return Err(McpError::invalid_params(
+                "Cannot merge a project into itself: canonical_project_id must not appear in alias_project_ids",
+                None,
+            ));
+        }
+
         let mut canonical = self
             .store
             .storage()

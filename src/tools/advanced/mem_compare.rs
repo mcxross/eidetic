@@ -41,12 +41,61 @@ impl MemCompare {
         &self,
         Parameters(params): Parameters<MemCompareParams>,
     ) -> Result<CallToolResult, McpError> {
+        // Validate inputs
+        if params.source_id == params.target_id {
+            return Err(McpError::invalid_params(
+                "Cannot create a relation between an observation and itself",
+                None,
+            ));
+        }
+        if params.reasoning.trim().is_empty() {
+            return Err(McpError::invalid_params(
+                "reasoning must not be empty",
+                None,
+            ));
+        }
+        if params.confidence.is_nan() {
+            return Err(McpError::invalid_params(
+                "confidence must be a valid number, not NaN",
+                None,
+            ));
+        }
+        let confidence = params.confidence.clamp(0.0, 1.0);
+
+        // Verify both observations exist
+        if self
+            .store
+            .storage()
+            .get_observation(&params.source_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .is_none()
+        {
+            return Err(McpError::invalid_params(
+                format!("Source observation not found: {}", params.source_id),
+                None,
+            ));
+        }
+        if self
+            .store
+            .storage()
+            .get_observation(&params.target_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            .is_none()
+        {
+            return Err(McpError::invalid_params(
+                format!("Target observation not found: {}", params.target_id),
+                None,
+            ));
+        }
+
         let relation = SemanticRelation {
             id: Uuid::new_v4().to_string(),
             source_id: params.source_id.clone(),
             target_id: params.target_id.clone(),
             relation_type: params.relation_type,
-            confidence: params.confidence,
+            confidence,
             reasoning: params.reasoning,
             created_at: Utc::now(),
             judged_by: None,

@@ -40,6 +40,10 @@ impl MemSessionSummary {
         &self,
         Parameters(params): Parameters<MemSessionSummaryParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.goal.trim().is_empty() {
+            return Err(McpError::invalid_params("goal must not be empty", None));
+        }
+
         let session_id = if let Some(sid) = params.session_id {
             sid
         } else {
@@ -78,7 +82,12 @@ impl MemSessionSummary {
             .update_session(&session)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        self.store.clear_current_session().await;
+        // Only clear current session if the target session was the active one
+        if let Some(current) = self.store.get_current_session().await {
+            if current == session_id {
+                self.store.clear_current_session().await;
+            }
+        }
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Saved session summary for: {}",

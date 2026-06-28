@@ -310,7 +310,7 @@ impl Storage for SqliteStorage {
         let related_json = serde_json::to_string(&obs.related_observations)?;
         let deleted_mode_str = obs.deleted_mode.map(|m| {
             serde_json::to_string(&m)
-                .unwrap()
+                .unwrap_or_else(|_| "null".to_string())
                 .trim_matches('"')
                 .to_string()
         });
@@ -698,38 +698,115 @@ impl Storage for SqliteStorage {
             .await?;
         let total_observations: i64 = count_row.get("c");
 
+        let active_row = sqlx::query("SELECT COUNT(*) as c FROM observations WHERE project_id = ? AND lifecycle_state = 'active'")
+            .bind(project_id)
+            .fetch_one(&self.pool)
+            .await?;
+        let active_observations: i64 = active_row.get("c");
+
+        let archived_row = sqlx::query("SELECT COUNT(*) as c FROM observations WHERE project_id = ? AND lifecycle_state = 'archived'")
+            .bind(project_id)
+            .fetch_one(&self.pool)
+            .await?;
+        let archived_observations: i64 = archived_row.get("c");
+
+        let deleted_row = sqlx::query("SELECT COUNT(*) as c FROM observations WHERE project_id = ? AND lifecycle_state = 'deleted'")
+            .bind(project_id)
+            .fetch_one(&self.pool)
+            .await?;
+        let deleted_observations: i64 = deleted_row.get("c");
+
         let sessions_row = sqlx::query("SELECT COUNT(*) as c FROM sessions WHERE project_id = ?")
             .bind(project_id)
             .fetch_one(&self.pool)
             .await?;
         let total_sessions: i64 = sessions_row.get("c");
 
+        let active_sessions_row = sqlx::query("SELECT COUNT(*) as c FROM sessions WHERE project_id = ? AND active = true")
+            .bind(project_id)
+            .fetch_one(&self.pool)
+            .await?;
+        let active_sessions: i64 = active_sessions_row.get("c");
+
         let projs_row = sqlx::query("SELECT COUNT(*) as c FROM projects")
             .fetch_one(&self.pool)
             .await?;
         let total_projects: i64 = projs_row.get("c");
 
+        // Get storage size via SQLite pragmas
+        let size_row = sqlx::query("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+            .fetch_optional(&self.pool)
+            .await?;
+        let storage_size_bytes: u64 = size_row
+            .map(|r| r.get::<i64, _>("size") as u64)
+            .unwrap_or(0);
+
+        // Get oldest/newest observation dates
+        let oldest_row: Option<String> = sqlx::query_scalar("SELECT MIN(created_at) FROM observations WHERE project_id = ?")
+            .bind(project_id)
+            .fetch_one(&self.pool)
+            .await?;
+        let oldest_observation = oldest_row
+            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+
+        let newest_row: Option<String> = sqlx::query_scalar("SELECT MAX(created_at) FROM observations WHERE project_id = ?")
+            .bind(project_id)
+            .fetch_one(&self.pool)
+            .await?;
+        let newest_observation = newest_row
+            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+
         Ok(MemoryStats {
             total_observations: total_observations as usize,
-            active_observations: total_observations as usize,
-            archived_observations: 0,
-            deleted_observations: 0,
+            active_observations: active_observations as usize,
+            archived_observations: archived_observations as usize,
+            deleted_observations: deleted_observations as usize,
             total_sessions: total_sessions as usize,
-            active_sessions: 1,
+            active_sessions: active_sessions as usize,
             total_projects: total_projects as usize,
-            storage_size_bytes: 4096, // placeholder
-            oldest_observation: None,
-            newest_observation: None,
+            storage_size_bytes,
+            oldest_observation,
+            newest_observation,
         })
     }
 
     async fn health_check(&self) -> anyhow::Result<StoreHealth> {
+        // Verify DB is readable
+        let readable = sqlx::query("SELECT 1")
+            .fetch_one(&self.pool)
+            .await
+            .is_ok();
+
+        // Verify DB is writable (try a harmless write)
+        let writable = sqlx::query("CREATE TABLE IF NOT EXISTS _health_check_probe (id INTEGER)")
+            .execute(&self.pool)
+            .await
+            .is_ok();
+
+        // Count orphaned observations (project_id not in projects table)
+        let orphaned_obs_row = sqlx::query("SELECT COUNT(*) as c FROM observations WHERE project_id NOT IN (SELECT id FROM projects)")
+            .fetch_one(&self.pool)
+            .await;
+        let orphaned_observations = orphaned_obs_row
+            .map(|r| r.get::<i64, _>("c") as usize)
+            .unwrap_or(0);
+
+        // Count orphaned sessions
+        let orphaned_sess_row = sqlx::query("SELECT COUNT(*) as c FROM sessions WHERE project_id NOT IN (SELECT id FROM projects)")
+            .fetch_one(&self.pool)
+            .await;
+        let orphaned_sessions = orphaned_sess_row
+            .map(|r| r.get::<i64, _>("c") as usize)
+            .unwrap_or(0);
+
         Ok(StoreHealth {
-            readable: true,
-            writable: true,
+            readable,
+            writable,
             corruption_detected: false,
-            orphaned_observations: 0,
-            orphaned_sessions: 0,
+            orphaned_observations,
+            orphaned_sessions,
         })
     }
 }

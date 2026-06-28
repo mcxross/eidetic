@@ -1,3 +1,4 @@
+use crate::memory::types::*;
 use crate::storage::MemoryStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
@@ -38,8 +39,15 @@ impl MemGetObservation {
                 McpError::invalid_params(format!("Observation not found: {}", params.id), None)
             })?;
 
-        let output = format!(
-            "ID: {}\nProject: {}\nType: {:?}\nTitle: {}\nTopic: {}\nTags: {}\nLifecycle: {:?}\nCreated: {}\nUpdated: {}\nReview After: {}\nRelated: {}\n\nContent:\n{}",
+        let mut output = String::new();
+
+        // Warn if soft-deleted
+        if obs.lifecycle == LifecycleState::Deleted {
+            output.push_str("⚠️ This observation has been soft-deleted.\n\n");
+        }
+
+        output.push_str(&format!(
+            "ID: {}\nProject: {}\nType: {:?}\nTitle: {}\nTopic: {}\nTags: {}\nLifecycle: {:?}\nScope: {:?}\nSession: {}\nHash: {}\nRevision Count: {}\nDuplicate Count: {}\nCreated: {}\nUpdated: {}\nLast Seen: {}\nReview After: {}\nReviewed At: {}\nRelated: {}\nMetadata: {}\n\nContent:\n{}",
             obs.id,
             obs.project_id,
             obs.memory_type,
@@ -47,14 +55,24 @@ impl MemGetObservation {
             obs.topic_key.unwrap_or_else(|| "none".to_string()),
             obs.tags.join(", "),
             obs.lifecycle,
+            obs.scope,
+            obs.session_id.unwrap_or_else(|| "none".to_string()),
+            obs.hash,
+            obs.revision_count,
+            obs.duplicate_count,
             obs.created_at.to_rfc3339(),
             obs.updated_at.to_rfc3339(),
+            obs.last_seen_at.to_rfc3339(),
             obs.review_after
                 .map(|dt| dt.to_rfc3339())
                 .unwrap_or_else(|| "none".to_string()),
+            obs.reviewed_at
+                .map(|dt| dt.to_rfc3339())
+                .unwrap_or_else(|| "none".to_string()),
             obs.related_observations.join(", "),
+            serde_json::to_string(&obs.metadata).unwrap_or_else(|_| "{}".to_string()),
             obs.content
-        );
+        ));
 
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }

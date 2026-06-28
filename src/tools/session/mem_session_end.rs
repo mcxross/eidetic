@@ -64,7 +64,12 @@ impl MemSessionEnd {
             .update_session(&session)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        self.store.clear_current_session().await;
+        // Only clear current session if the ended session was the active one
+        if let Some(current) = self.store.get_current_session().await {
+            if current == session_id {
+                self.store.clear_current_session().await;
+            }
+        }
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Ended session: {} (duration: {} minutes)",

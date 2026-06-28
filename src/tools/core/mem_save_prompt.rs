@@ -37,6 +37,10 @@ impl MemSavePrompt {
         &self,
         Parameters(params): Parameters<MemSavePromptParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.prompt.trim().is_empty() {
+            return Err(McpError::invalid_params("prompt must not be empty", None));
+        }
+
         let project = if let Some(pid) = params.project_id {
             self.store
                 .storage()

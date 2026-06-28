@@ -31,6 +31,10 @@ impl MemCapturePassive {
         &self,
         Parameters(params): Parameters<MemCapturePassiveParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.text.trim().is_empty() {
+            return Err(McpError::invalid_params("text must not be empty", None));
+        }
+
         let project = if let Some(pid) = params.project_id {
             self.store
                 .storage()
@@ -47,7 +51,15 @@ impl MemCapturePassive {
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
-        let title = "Passive Capture Learning".to_string();
+        let title = {
+            let cleaned = params.text.replace('\n', " ");
+            let truncated: String = cleaned.chars().take(50).collect();
+            if cleaned.chars().count() > 50 {
+                format!("Passive: {}...", truncated)
+            } else {
+                format!("Passive: {}", truncated)
+            }
+        };
         let obs = Observation::new(
             project.id.clone(),
             Scope::Project,

@@ -33,6 +33,9 @@ impl MemSuggestTopicKey {
         &self,
         Parameters(params): Parameters<MemSuggestTopicKeyParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.content.trim().is_empty() {
+            return Err(McpError::invalid_params("content must not be empty", None));
+        }
         let project = if let Some(pid) = params.project_id {
             self.store
                 .storage()
@@ -60,7 +63,7 @@ impl MemSuggestTopicKey {
         let existing_topics: Vec<TopicKey> = observations
             .iter()
             .filter_map(|o| o.topic_key.clone())
-            .collect::<std::collections::HashSet<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect();
 
@@ -134,7 +137,7 @@ impl MemSuggestTopicKey {
             .split(|c: char| !c.is_alphanumeric())
             .filter(|w| w.len() > 2 && !stop_words.contains(*w))
             .map(|w| w.to_string())
-            .collect::<std::collections::HashSet<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .take(10)
             .collect()

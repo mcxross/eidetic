@@ -32,6 +32,10 @@ impl MemSearch {
         &self,
         Parameters(params): Parameters<MemSearchParams>,
     ) -> Result<CallToolResult, McpError> {
+        if params.query.trim().is_empty() {
+            return Err(McpError::invalid_params("query must not be empty", None));
+        }
+
         let project = if let Some(pid) = params.project_id {
             self.store
                 .storage()
@@ -49,7 +53,7 @@ impl MemSearch {
         };
 
         let project_id = project.id.clone();
-        let limit = params.limit.unwrap_or(20);
+        let limit = params.limit.unwrap_or(20).min(500);
 
         let results = self
             .store

@@ -50,8 +50,8 @@ impl MemContext {
         };
 
         let project_id = project.id.clone();
-        let session_limit = params.session_limit.unwrap_or(5);
-        let observation_limit = params.observation_limit.unwrap_or(20);
+        let session_limit = params.session_limit.unwrap_or(5).min(100);
+        let observation_limit = params.observation_limit.unwrap_or(20).min(500);
 
         let recent_sessions = self
             .store

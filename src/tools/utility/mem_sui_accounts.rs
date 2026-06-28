@@ -27,8 +27,8 @@ impl MemSuiAccounts {
         Parameters(_params): Parameters<MemSuiAccountsParams>,
     ) -> Result<CallToolResult, McpError> {
         let auth = self.store.auth_manager().ok_or_else(|| {
-            McpError::invalid_params(
-                "Memwal auth is only available with --storage-backend memwal",
+            McpError::internal_error(
+                "Memwal backend not configured. Start the server with --storage-backend memwal to use this tool.",
                 None,
             )
         })?;

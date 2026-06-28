@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
+use tracing::warn;
 use walkdir::WalkDir;
 
 pub struct FileStorage {
@@ -101,16 +102,31 @@ impl FileStorage {
         let rel_dir = self.base_path.join("relations");
         if rel_dir.exists() {
             for entry in WalkDir::new(&rel_dir).into_iter().filter_map(|e| e.ok()) {
-                if entry.path().extension().is_some_and(|ext| ext == "json")
-                    && let Ok(content) = fs::read_to_string(entry.path()).await
-                    && let Ok(rel) = serde_json::from_str::<SemanticRelation>(&content)
-                {
-                    self.relations.insert(rel.id.clone(), rel);
+                if entry.path().extension().is_some_and(|ext| ext == "json") {
+                    match fs::read_to_string(entry.path()).await {
+                        Ok(content) => match serde_json::from_str::<SemanticRelation>(&content) {
+                            Ok(rel) => { self.relations.insert(rel.id.clone(), rel); }
+                            Err(e) => warn!("Failed to parse relation file {:?}: {}", entry.path(), e),
+                        },
+                        Err(e) => warn!("Failed to read relation file {:?}: {}", entry.path(), e),
+                    }
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// Validate that an ID is safe for use in filesystem paths.
+    /// Rejects path traversal attempts (e.g., "../", absolute paths, null bytes).
+    fn sanitize_id(id: &str) -> anyhow::Result<&str> {
+        if id.is_empty() {
+            anyhow::bail!("ID must not be empty");
+        }
+        if id.contains('/') || id.contains('\\') || id.contains('\0') || id.contains("..") {
+            anyhow::bail!("ID contains unsafe path characters: {}", id);
+        }
+        Ok(id)
     }
 
     fn obs_path(&self, id: &ObservationId) -> PathBuf {
@@ -137,12 +153,16 @@ impl FileStorage {
             .join(format!("{}.json", id))
     }
 
+    /// Atomic write: serialize to a temp file, then rename into place.
+    /// Prevents partial/corrupt files on crash.
     async fn write_json<T: Serialize>(&self, path: &Path, value: &T) -> anyhow::Result<()> {
         let content = serde_json::to_string_pretty(value)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
         }
-        fs::write(path, content).await?;
+        let tmp_path = path.with_extension("json.tmp");
+        fs::write(&tmp_path, &content).await?;
+        fs::rename(&tmp_path, path).await?;
         Ok(())
     }
 }
@@ -150,6 +170,7 @@ impl FileStorage {
 #[async_trait]
 impl Storage for FileStorage {
     async fn save_observation(&self, obs: &Observation) -> anyhow::Result<()> {
+        Self::sanitize_id(&obs.id)?;
         self.observations.insert(obs.id.clone(), obs.clone());
         self.write_json(&self.obs_path(&obs.id), obs).await
     }
@@ -326,6 +347,7 @@ impl Storage for FileStorage {
     }
 
     async fn save_session(&self, session: &Session) -> anyhow::Result<()> {
+        Self::sanitize_id(&session.id)?;
         self.sessions.insert(session.id.clone(), session.clone());
         self.write_json(&self.sess_path(&session.id), session).await
     }
@@ -366,6 +388,7 @@ impl Storage for FileStorage {
     }
 
     async fn save_project(&self, project: &Project) -> anyhow::Result<()> {
+        Self::sanitize_id(&project.id)?;
         self.projects.insert(project.id.clone(), project.clone());
         self.write_json(&self.proj_path(&project.id), project).await
     }
@@ -397,6 +420,7 @@ impl Storage for FileStorage {
     }
 
     async fn save_prompt(&self, prompt: &SavedPrompt) -> anyhow::Result<()> {
+        Self::sanitize_id(&prompt.id)?;
         self.prompts.insert(prompt.id.clone(), prompt.clone());
         self.write_json(&self.prompt_path(&prompt.id), prompt).await
     }
@@ -418,6 +442,7 @@ impl Storage for FileStorage {
     }
 
     async fn save_relation(&self, relation: &SemanticRelation) -> anyhow::Result<()> {
+        Self::sanitize_id(&relation.id)?;
         self.relations.insert(relation.id.clone(), relation.clone());
         self.write_json(&self.rel_path(&relation.id), relation)
             .await

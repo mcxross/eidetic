@@ -88,11 +88,16 @@ impl MemDoctor {
             });
         }
 
+        let mut recommendations = Vec::new();
+        if health.orphaned_observations > 0 || health.orphaned_sessions > 0 {
+            recommendations.push("Review orphaned data".to_string());
+        }
+
         let doctor_result = DoctorResult {
             project_detection: detection,
             store_health: health,
             issues,
-            recommendations: vec!["Review orphaned data".to_string()],
+            recommendations,
         };
 
         let result_json = serde_json::to_string_pretty(&doctor_result).map_err(|e| {

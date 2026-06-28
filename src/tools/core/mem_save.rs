@@ -8,6 +8,7 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::info;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MemSaveParams {
@@ -54,6 +55,37 @@ impl MemSave {
         &self,
         Parameters(params): Parameters<MemSaveParams>,
     ) -> Result<CallToolResult, McpError> {
+        // Input validation
+        if params.title.trim().is_empty() {
+            return Err(McpError::invalid_params("title must not be empty", None));
+        }
+        if params.content.trim().is_empty() {
+            return Err(McpError::invalid_params("content must not be empty", None));
+        }
+        if let Some(ref metadata) = params.metadata {
+            if !metadata.is_null() && !metadata.is_object() {
+                return Err(McpError::invalid_params(
+                    "metadata must be a JSON object, not an array or primitive",
+                    None,
+                ));
+            }
+        }
+        if let Some(ref sid) = params.session_id {
+            let session_exists = self
+                .store
+                .storage()
+                .get_session(sid)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                .is_some();
+            if !session_exists {
+                return Err(McpError::invalid_params(
+                    format!("Session not found: {}", sid),
+                    None,
+                ));
+            }
+        }
+
         let project = if let Some(pid) = params.project_id {
             self.store
                 .storage()
@@ -69,6 +101,8 @@ impl MemSave {
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
+
+        info!("mem_save: saving observation for project={}", project.id);
 
         let project_id = project.id.clone();
         let scope = params.scope.unwrap_or(Scope::Project);
@@ -93,6 +127,7 @@ impl MemSave {
                 && o.memory_type == params.memory_type
                 && o.title == params.title
         }) {
+            info!("mem_save: dedup hit for hash={}", content_hash);
             existing.duplicate_count += 1;
             existing.last_seen_at = chrono::Utc::now();
             existing.updated_at = chrono::Utc::now();
@@ -112,6 +147,7 @@ impl MemSave {
                 .iter_mut()
                 .find(|o| o.scope == scope && o.topic_key.as_ref() == Some(topic))
         {
+            info!("mem_save: topic upsert for key={}", topic);
             existing.content = params.content.clone();
             existing.hash = content_hash.clone();
             existing.title = params.title.clone();
@@ -137,10 +173,20 @@ impl MemSave {
             ))]));
         }
 
-        let review_after = if let Some(ra) = params.review_after {
-            chrono::DateTime::parse_from_rfc3339(&ra)
-                .ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc))
+        let review_after = if let Some(ref ra) = params.review_after {
+            Some(
+                chrono::DateTime::parse_from_rfc3339(ra)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .map_err(|_| {
+                        McpError::invalid_params(
+                            format!(
+                                "Invalid review_after datetime format: '{}'. Expected ISO 8601/RFC 3339.",
+                                ra
+                            ),
+                            None,
+                        )
+                    })?,
+            )
         } else {
             None
         };

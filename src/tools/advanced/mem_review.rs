@@ -53,7 +53,8 @@ impl MemReview {
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
-        match params.action.as_str() {
+        let action = params.action.trim().to_lowercase();
+        match action.as_str() {
             "list" => {
                 let stale_reviews = self
                     .store

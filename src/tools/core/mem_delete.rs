@@ -42,6 +42,15 @@ impl MemDelete {
             })?;
 
         let mode = params.mode.unwrap_or(DeleteMode::Soft);
+
+        // Idempotent: don't re-delete already soft-deleted observations
+        if obs.lifecycle == LifecycleState::Deleted && mode == DeleteMode::Soft {
+            return Ok(CallToolResult::success(vec![Content::text(format!(
+                "Observation '{}' (ID: {}) is already soft-deleted",
+                obs.title, obs.id
+            ))]));
+        }
+
         self.store
             .storage()
             .delete_observation(&params.id, mode)

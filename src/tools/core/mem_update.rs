@@ -56,6 +56,15 @@ impl MemUpdate {
                 McpError::invalid_params(format!("Observation not found: {}", params.id), None)
             })?;
 
+        if let Some(ref metadata) = params.metadata {
+            if !metadata.is_null() && !metadata.is_object() {
+                return Err(McpError::invalid_params(
+                    "metadata must be a JSON object, not an array or primitive",
+                    None,
+                ));
+            }
+        }
+
         if let Some(title) = params.title {
             obs.title = title;
         }
@@ -76,15 +85,36 @@ impl MemUpdate {
         if let Some(lifecycle) = params.lifecycle {
             obs.lifecycle = lifecycle;
         }
-        if let Some(review_after) = params.review_after {
-            obs.review_after = chrono::DateTime::parse_from_rfc3339(&review_after)
-                .ok()
-                .map(|dt| dt.with_timezone(&chrono::Utc));
+        if let Some(ref review_after) = params.review_after {
+            obs.review_after = Some(
+                chrono::DateTime::parse_from_rfc3339(review_after)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .map_err(|_| {
+                        McpError::invalid_params(
+                            format!(
+                                "Invalid review_after datetime format: '{}'. Expected ISO 8601/RFC 3339.",
+                                review_after
+                            ),
+                            None,
+                        )
+                    })?,
+            );
         }
         if let Some(related) = params.related_observations {
             obs.related_observations.extend(related);
+            obs.related_observations.sort();
+            obs.related_observations.dedup();
         }
 
+        // Recompute hash if title or content changed
+        obs.hash = Observation::compute_hash(
+            &obs.project_id,
+            &obs.scope,
+            &obs.memory_type,
+            &obs.title,
+            &obs.content,
+        );
+        obs.revision_count += 1;
         obs.updated_at = Utc::now();
 
         self.store
