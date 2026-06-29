@@ -4,6 +4,22 @@ use std::path::PathBuf;
 use tokio::fs;
 
 #[derive(Default, Serialize, Deserialize, Clone, Debug)]
+pub struct HarborConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bucket_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seal_policy_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seal_package_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seal_key_server_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_backup_at: Option<String>,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct EideticConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub storage_backend: Option<String>,
@@ -25,6 +41,8 @@ pub struct EideticConfig {
     pub sui_config_dir: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harbor: Option<HarborConfig>,
 }
 
 impl EideticConfig {

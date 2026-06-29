@@ -7,6 +7,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
 mod config;
+mod harbor;
 mod memory;
 mod server;
 mod setup;
@@ -64,9 +65,18 @@ pub struct Cli {
 enum Commands {
     Serve,
     Tui,
-    Setup { agent: String },
+    Setup {
+        agent: String,
+    },
     Update,
     Info,
+    /// Back up the SQLite database to Harbor
+    Backup,
+    /// Restore a SQLite database backup from Harbor
+    Restore {
+        /// Day of the week to restore (e.g., "monday", "tuesday")
+        day: String,
+    },
 }
 
 #[tokio::main]
@@ -160,6 +170,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Setup { agent } => setup::run(&agent).await,
         Commands::Update => update::update().await,
         Commands::Info => run_info(config).await,
+        Commands::Backup => run_backup(config).await,
+        Commands::Restore { day } => run_restore(config, &day).await,
     }
 }
 
@@ -286,4 +298,194 @@ async fn run_tui(
     let store = crate::storage::MemoryStore::new(backend, path, auth_config).await?;
     let storage: Arc<dyn crate::storage::Storage> = store.storage();
     crate::tui::run(storage).await
+}
+
+async fn run_backup(mut config: config::EideticConfig) -> anyhow::Result<()> {
+    println!("=== Eidetic Backup ===");
+
+    let credentials = crate::harbor::HarborCredentials::load()?;
+
+    // Get or create bucket
+    let harbor_config = config.harbor.get_or_insert_with(Default::default);
+
+    let bucket_id = if let Some(ref id) = harbor_config.bucket_id {
+        println!("Using existing bucket: {}", id);
+        id.clone()
+    } else {
+        println!("No bucket configured. Reserving a new Harbor bucket...");
+        let harbor =
+            harbor_core::client::HarborClient::new(harbor_core::client::HarborClientOptions {
+                api_key: credentials.api_key.clone(),
+                ..Default::default()
+            });
+
+        let spaces = harbor.list_spaces().await?;
+        let space = spaces
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No Harbor spaces found for this API key"))?;
+        println!("  Space: {}", space.id);
+
+        let reserved = harbor.reserve_bucket(&space.id, "eidetic-backup").await?;
+        println!("  Reserved bucket: {}", reserved.bucket_id);
+
+        use fastcrypto::traits::ToFromBytes;
+        // Sign with service private key
+        let keypair = if credentials.service_private_key.starts_with("suiprivkey") {
+            use bech32::FromBase32;
+            let (_, data, _) =
+                bech32::decode(&credentials.service_private_key).expect("Invalid bech32");
+            let bytes = Vec::<u8>::from_base32(&data).expect("Invalid base32");
+            let secret_key = bytes[1..].to_vec();
+            fastcrypto::ed25519::Ed25519KeyPair::from_bytes(&secret_key)
+                .expect("Invalid ed25519 key")
+        } else {
+            let privkey_bytes = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                &credentials.service_private_key,
+            )
+            .expect("Invalid base64");
+            fastcrypto::ed25519::Ed25519KeyPair::from_bytes(&privkey_bytes)
+                .expect("Invalid ed25519 key")
+        };
+
+        let signature = harbor_core::seal::sign_reserve_bytes(&keypair, &reserved.bytes)?;
+        let finalized = harbor
+            .finalize_bucket(&reserved.bucket_id, &signature)
+            .await?;
+        println!("  Finalized. Seal policy: {}", finalized.seal_policy_id);
+
+        harbor_config.space_id = Some(space.id.clone());
+        harbor_config.bucket_id = Some(reserved.bucket_id.clone());
+        harbor_config.seal_policy_id = Some(finalized.seal_policy_id);
+        config.save().await?;
+        println!("  Saved Harbor config.");
+
+        reserved.bucket_id
+    };
+
+    let manager = crate::harbor::HarborBackupManager::new(&credentials, bucket_id);
+
+    let storage_path = config
+        .storage_path
+        .clone()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(crate::storage::get_storage_path);
+    let db_path = storage_path.join("eidetic.db");
+
+    if !db_path.exists() {
+        anyhow::bail!(
+            "No database found at {}. Nothing to back up.",
+            db_path.display()
+        );
+    }
+
+    println!("\nCreating backup...");
+    let file_name = manager.backup(&db_path).await?;
+    println!("✅ Backup uploaded as '{}'", file_name);
+
+    // Update last_backup_at
+    if let Some(ref mut hc) = config.harbor {
+        hc.last_backup_at = Some(chrono::Utc::now().to_rfc3339());
+    }
+    config.save().await?;
+
+    Ok(())
+}
+
+async fn run_restore(config: config::EideticConfig, day: &str) -> anyhow::Result<()> {
+    println!("=== Eidetic Restore ===");
+    println!();
+
+    let harbor_config = config.harbor.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("No Harbor backup configured. Run 'eidetic backup' first.")
+    })?;
+    let bucket_id = harbor_config
+        .bucket_id
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No bucket ID found in config."))?;
+
+    let credentials = crate::harbor::HarborCredentials::load()?;
+    let manager = crate::harbor::HarborBackupManager::new(&credentials, bucket_id.clone());
+
+    let target_name = format!("backup_{}.enc", day.to_lowercase());
+    println!("Looking for backup: {}", target_name);
+
+    let backups = manager.list_backups().await?;
+    let backup = backups
+        .iter()
+        .find(|f| f.name.as_deref() == Some(&target_name))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No backup found for '{}'. Available: {}",
+                day,
+                backups
+                    .iter()
+                    .filter_map(|f| f.name.as_deref())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+
+    println!(
+        "Found backup: {} ({}B)",
+        backup.id,
+        backup.size.unwrap_or(0)
+    );
+    println!();
+    println!("⚠️  WARNING: This will OVERWRITE your current memory database.");
+    println!("   Type YES to confirm:");
+
+    let mut confirmation = String::new();
+    std::io::stdin().read_line(&mut confirmation)?;
+    if confirmation.trim() != "YES" {
+        println!("Restore cancelled.");
+        return Ok(());
+    }
+
+    println!("\nDownloading and verifying...");
+    let db_bytes = manager.download_backup(&backup.id).await?;
+
+    let storage_path = config
+        .storage_path
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(crate::storage::get_storage_path);
+    let db_path = storage_path.join("eidetic.db");
+
+    // Write to temp file first
+    let temp_path = db_path.with_extension("restore.tmp");
+    tokio::fs::write(&temp_path, &db_bytes).await?;
+
+    // Run integrity check
+    println!("Running integrity check...");
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&temp_path)
+                .read_only(true),
+        )
+        .await?;
+
+    let result: (String,) = sqlx::query_as("PRAGMA integrity_check")
+        .fetch_one(&pool)
+        .await?;
+    pool.close().await;
+
+    if result.0 != "ok" {
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        anyhow::bail!("Integrity check failed: {}", result.0);
+    }
+
+    // Overwrite
+    println!("Replacing database...");
+    let wal_path = db_path.with_extension("db-wal");
+    let shm_path = db_path.with_extension("db-shm");
+    let _ = tokio::fs::remove_file(&wal_path).await;
+    let _ = tokio::fs::remove_file(&shm_path).await;
+    tokio::fs::rename(&temp_path, &db_path).await?;
+
+    println!("✅ Database restored successfully from '{}' backup.", day);
+    println!("   Restart the Eidetic server to use the restored data.");
+
+    Ok(())
 }
