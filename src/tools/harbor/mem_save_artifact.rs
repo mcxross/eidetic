@@ -72,7 +72,7 @@ impl MemSaveArtifact {
             "is_encrypted".to_string(),
             serde_json::Value::Bool(result.is_encrypted),
         );
-        if let Some(id_bytes) = result.id_bytes {
+        if let Some(ref id_bytes) = result.id_bytes {
             metadata.insert(
                 "seal_id_bytes".to_string(),
                 serde_json::Value::String(hex::encode(id_bytes)),
@@ -124,18 +124,32 @@ impl MemSaveArtifact {
         };
 
         let storage = store.storage();
-        let structured = match storage.as_structured() {
-            Some(s) => s,
-            None => return Err(McpError::internal_error("mem_save_artifact is not supported on unstructured storage backends like memwal", None)),
-        };
-
-        structured.save_observation(&obs).await.map_err(|e| {
-            McpError::internal_error(format!("Failed to save observation: {}", e), None)
-        })?;
+        if let Some(structured) = storage.as_structured() {
+            structured.save_observation(&obs).await.map_err(|e| {
+                McpError::internal_error(format!("Failed to save observation: {}", e), None)
+            })?;
+        } else if let Some(unstructured) = storage.as_unstructured() {
+            let mut seal_id_str = "".to_string();
+            if let Some(id_bytes) = &result.id_bytes {
+                seal_id_str = format!("\nSeal ID: {}", hex::encode(id_bytes));
+            }
+            
+            let text = format!(
+                "[ARTIFACT REFERENCE]\nFilename: {}\nHarbor File ID: {}\nEncrypted: {}{}",
+                params.0.filename, result.file_id, result.is_encrypted, seal_id_str
+            );
+            
+            let ns = store.get_current_project().await;
+            unstructured.remember(&text, ns.as_deref()).await.map_err(|e| {
+                McpError::internal_error(format!("Failed to remember artifact to Memwal: {}", e), None)
+            })?;
+        } else {
+            return Err(McpError::internal_error("Storage backend has no known capabilities", None));
+        }
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Successfully saved artifact to Harbor.\nFile ID: {}\nObservation ID: {}",
-            result.file_id, id
+            "Successfully saved artifact to Harbor.\nFile ID: {}",
+            result.file_id
         ))]))
     }
 }

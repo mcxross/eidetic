@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 #[derive(Deserialize, JsonSchema)]
 pub struct MemGetArtifactParams {
-    pub observation_id: String,
+    pub harbor_file_id: String,
+    pub is_encrypted: Option<bool>,
+    pub seal_id_bytes: Option<String>,
 }
 
 #[derive(Clone)]
@@ -48,57 +50,16 @@ impl MemGetArtifact {
 
         let artifact_manager = ArtifactManager::new(&credentials, harbor_config, auth);
 
-        let obs_id = params.0.observation_id.clone();
-        let storage = store.storage();
-        let structured = match storage.as_structured() {
-            Some(s) => s,
-            None => return Err(McpError::internal_error("mem_get_artifact is not supported on unstructured storage backends like memwal", None)),
-        };
-
-        let obs = structured
-            .get_observation(&obs_id)
-            .await
-            .map_err(|e| {
-                McpError::internal_error(format!("Failed to get observation: {}", e), None)
-            })?
-            .ok_or_else(|| McpError::internal_error("Observation not found", None))?;
-
-        if obs.memory_type != MemoryType::Artifact {
-            return Err(McpError::internal_error(
-                "Observation is not an artifact",
-                None,
-            ));
-        }
-
-        let file_id = obs
-            .metadata
-            .get("harbor_file_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                McpError::internal_error("harbor_file_id not found in metadata", None)
-            })?;
-
-        let is_encrypted = obs
-            .metadata
-            .get("is_encrypted")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let id_bytes = if let Some(hex_str) =
-            obs.metadata.get("seal_id_bytes").and_then(|v| v.as_str())
-        {
-            Some(hex::decode(hex_str).map_err(|e| {
+        let file_id = &params.0.harbor_file_id;
+        let is_encrypted = params.0.is_encrypted.unwrap_or(false);
+        
+        let id_bytes = if let Some(hex_str) = params.0.seal_id_bytes {
+            Some(hex::decode(&hex_str).map_err(|e| {
                 McpError::internal_error(format!("Failed to decode seal_id_bytes hex: {}", e), None)
             })?)
         } else {
             None
         };
-
-        let filename = obs
-            .metadata
-            .get("filename")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
 
         let downloaded_bytes = artifact_manager
             .download_artifact(file_id, is_encrypted, id_bytes)
@@ -111,8 +72,8 @@ impl MemGetArtifact {
             String::from_utf8(downloaded_bytes).unwrap_or_else(|_| "<binary content>".to_string());
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Artifact: {}\nFile ID: {}\nEncrypted: {}\n\n{}",
-            filename, file_id, is_encrypted, content
+            "Artifact retrieved from Harbor\nFile ID: {}\nEncrypted: {}\n\n{}",
+            file_id, is_encrypted, content
         ))]))
     }
 }
