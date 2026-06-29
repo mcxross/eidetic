@@ -155,3 +155,22 @@ impl Clone for MemoryStore {
         }
     }
 }
+
+#[cfg(test)]
+impl MemoryStore {
+    pub async fn setup_test_store() -> (Self, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let sq = crate::storage::SqliteStorage::new(dir.path().to_path_buf())
+            .await
+            .unwrap();
+        (
+            Self {
+                storage: std::sync::Arc::new(sq),
+                auth_manager: None,
+                current_project: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+                current_session: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+            },
+            dir,
+        )
+    }
+}

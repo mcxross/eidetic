@@ -98,3 +98,42 @@ impl MemSearch {
         ))]))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::types::{MemoryType, Observation, Scope};
+    use crate::storage::MemoryStore;
+    use chrono::Utc;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    #[tokio::test]
+    async fn test_mem_search() {
+        let (store, _dir) = MemoryStore::setup_test_store().await;
+        let tool = MemSearch::new(store.clone());
+
+        // Create an observation manually
+        let project = store.get_or_create_project(None).await.unwrap();
+        let obs = Observation::new(
+            project.id.clone(),
+            Scope::Global,
+            MemoryType::Note,
+            "Unique Title ABC".to_string(),
+            "This contains a unique query string XYZ123".to_string(),
+        );
+        store.storage().save_observation(&obs).await.unwrap();
+
+        // Test search
+        let params = MemSearchParams {
+            project_id: None,
+            query: "XYZ123".to_string(),
+            limit: Some(10),
+        };
+
+        let result = tool.mem_search(Parameters(params)).await;
+        assert!(result.is_ok());
+        let res = result.unwrap();
+        let content_str = format!("{:?}", res.content[0]);
+        assert!(content_str.contains("Unique Title ABC"));
+    }
+}

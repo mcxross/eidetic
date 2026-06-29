@@ -27,5 +27,4 @@ impl KeychainManager {
     pub fn is_configured() -> bool {
         Self::load_private_key().is_ok()
     }
-
 }

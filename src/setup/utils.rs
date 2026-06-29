@@ -64,3 +64,46 @@ pub fn merge_mcp_server(config: &mut Value, server_name: &str, server_config: Va
     }
     config["mcpServers"][server_name] = server_config;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_mcp_server() {
+        let mut config = json!({});
+        let server_config = json!({
+            "command": "eidetic",
+            "args": ["server"]
+        });
+
+        merge_mcp_server(&mut config, "eidetic-server", server_config.clone());
+
+        assert!(config["mcpServers"].is_object());
+        assert_eq!(config["mcpServers"]["eidetic-server"]["command"], "eidetic");
+
+        // Merge a second server
+        merge_mcp_server(&mut config, "other-server", json!({"command": "other"}));
+        assert_eq!(config["mcpServers"]["eidetic-server"]["command"], "eidetic");
+        assert_eq!(config["mcpServers"]["other-server"]["command"], "other");
+    }
+
+    #[tokio::test]
+    async fn test_read_write_json_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("config.json");
+
+        // Write config
+        let value = json!({"hello": "world"});
+        write_json_config(&file_path, &value).await.unwrap();
+
+        // Read config back
+        let read_val = read_json_config(&file_path).await.unwrap();
+        assert_eq!(read_val["hello"], "world");
+
+        // Read non-existent config should return empty object
+        let empty_path = dir.path().join("does_not_exist.json");
+        let empty_val = read_json_config(&empty_path).await.unwrap();
+        assert_eq!(empty_val, json!({}));
+    }
+}

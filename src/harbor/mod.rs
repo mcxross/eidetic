@@ -218,3 +218,42 @@ impl HarborBackupManager {
         Ok(db_bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_payload_build_and_verify() {
+        let dummy_data = b"hello world sqlite snapshot";
+        let payload = HarborBackupManager::build_payload(dummy_data);
+
+        // Verify the payload contains the header marker
+        let payload_str = String::from_utf8_lossy(&payload);
+        assert!(payload_str.starts_with(BACKUP_HEADER_MARKER));
+        assert!(payload_str.contains("sha256:"));
+
+        // Parse and verify should recover the original data
+        let recovered = HarborBackupManager::parse_and_verify_payload(&payload).unwrap();
+        assert_eq!(recovered, dummy_data);
+    }
+
+    #[test]
+    fn test_payload_tampering() {
+        let dummy_data = b"hello world sqlite snapshot";
+        let mut payload = HarborBackupManager::build_payload(dummy_data);
+
+        // Tamper with the data payload (after the header)
+        let len = payload.len();
+        payload[len - 1] = b'x';
+
+        let result = HarborBackupManager::parse_and_verify_payload(&payload);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("integrity check failed")
+        );
+    }
+}

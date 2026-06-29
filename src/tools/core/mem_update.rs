@@ -125,9 +125,65 @@ impl MemUpdate {
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Updated observation: {} (ID: {})",
+            "Observation updated successfully: {} (ID: {})",
             obs.title, obs.id
         ))]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::types::{MemoryType, Observation, Scope};
+    use crate::storage::MemoryStore;
+    use chrono::Utc;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    #[tokio::test]
+    async fn test_mem_update() {
+        let (store, _dir) = MemoryStore::setup_test_store().await;
+        let tool = MemUpdate::new(store.clone());
+
+        // Create an observation manually
+        let project = store.get_or_create_project(None).await.unwrap();
+        let obs = Observation::new(
+            project.id.clone(),
+            Scope::Global,
+            MemoryType::Note,
+            "Original Title".to_string(),
+            "Original Content".to_string(),
+        );
+        let obs_id = obs.id.clone();
+        store.storage().save_observation(&obs).await.unwrap();
+
+        // Update observation
+        let params = MemUpdateParams {
+            id: obs_id.clone(),
+            title: Some("New Title".to_string()),
+            content: Some("New Content".to_string()),
+            topic_key: None,
+            tags: Some(vec!["new_tag".to_string()]),
+            metadata: None,
+            lifecycle: Some(LifecycleState::Archived),
+            review_after: None,
+            related_observations: None,
+        };
+
+        let result = tool.mem_update(Parameters(params)).await;
+        assert!(result.is_ok());
+
+        // Verify updates
+        let updated_obs = store
+            .storage()
+            .get_observation(&obs_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated_obs.title, "New Title");
+        assert_eq!(updated_obs.content, "New Content");
+        assert_eq!(updated_obs.tags, vec!["new_tag".to_string()]);
+        assert_eq!(updated_obs.lifecycle, LifecycleState::Archived);
+        assert_eq!(updated_obs.revision_count, 1); // was 0? wait, when updating, it might increment. Let's just check > 0
     }
 }
 

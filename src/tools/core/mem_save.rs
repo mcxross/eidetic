@@ -253,9 +253,89 @@ impl MemSave {
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         }
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Saved new observation: {} (ID: {})",
-            obs.title, obs.id
-        ))]))
+        let output = format!("Saved new observation: {} (ID: {})", obs.title, obs.id);
+        Ok(CallToolResult::success(vec![Content::text(output)]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::types::{MemoryType, Scope};
+    use crate::storage::MemoryStore;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    #[tokio::test]
+    async fn test_mem_save_validation() {
+        let (store, _dir) = MemoryStore::setup_test_store().await;
+        let tool = MemSave::new(store);
+
+        // Empty title
+        let params = MemSaveParams {
+            project_id: None,
+            scope: None,
+            memory_type: MemoryType::Note,
+            title: "".to_string(),
+            content: "Some content".to_string(),
+            topic_key: None,
+            tags: None,
+            metadata: None,
+            capture_prompt: None,
+            session_id: None,
+            review_after: None,
+            related_observations: None,
+        };
+
+        let result = tool.mem_save(Parameters(params)).await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .message
+                .contains("title must not be empty")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mem_save_success() {
+        let (store, _dir) = MemoryStore::setup_test_store().await;
+        let tool = MemSave::new(store.clone());
+
+        let params = MemSaveParams {
+            project_id: None,
+            scope: Some(Scope::Global),
+            memory_type: MemoryType::Note,
+            title: "Test Observation".to_string(),
+            content: "This is a test observation.".to_string(),
+            topic_key: Some("test_topic".to_string()),
+            tags: Some(vec!["test".to_string()]),
+            metadata: None,
+            capture_prompt: Some(false),
+            session_id: None,
+            review_after: None,
+            related_observations: None,
+        };
+
+        let result = tool.mem_save(Parameters(params)).await;
+        assert!(result.is_ok());
+
+        // Verify it was actually saved
+        let project = store.get_or_create_project(None).await.unwrap();
+        let saved_obs = store
+            .storage()
+            .search_observations(&project.id, "Test Observation", 10)
+            .await
+            .unwrap();
+
+        assert_eq!(saved_obs.len(), 1);
+        assert_eq!(saved_obs[0].observation.title, "Test Observation");
+        assert_eq!(
+            saved_obs[0].observation.content,
+            "This is a test observation."
+        );
+        assert_eq!(
+            saved_obs[0].observation.topic_key.as_deref(),
+            Some("test_topic")
+        );
     }
 }

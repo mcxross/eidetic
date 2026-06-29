@@ -68,3 +68,47 @@ impl MemDelete {
         ))]))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::memory::types::{MemoryType, Observation, Scope};
+    use crate::storage::MemoryStore;
+    use rmcp::handler::server::wrapper::Parameters;
+
+    #[tokio::test]
+    async fn test_mem_delete() {
+        let (store, _dir) = MemoryStore::setup_test_store().await;
+        let tool = MemDelete::new(store.clone());
+
+        // Create an observation manually
+        let project = store.get_or_create_project(None).await.unwrap();
+        let obs = Observation::new(
+            project.id.clone(),
+            Scope::Global,
+            MemoryType::Note,
+            "Delete Me".to_string(),
+            "To be deleted".to_string(),
+        );
+        let obs_id = obs.id.clone();
+        store.storage().save_observation(&obs).await.unwrap();
+
+        // Delete observation
+        let params = MemDeleteParams {
+            id: obs_id.clone(),
+            mode: Some(DeleteMode::Soft),
+        };
+
+        let result = tool.mem_delete(Parameters(params)).await;
+        assert!(result.is_ok());
+
+        // Verify it was soft-deleted
+        let deleted_obs = store
+            .storage()
+            .get_observation(&obs_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(deleted_obs.lifecycle, LifecycleState::Deleted);
+    }
+}

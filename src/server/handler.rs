@@ -299,3 +299,19 @@ impl ServerHandler for EideticServer {
         .with_instructions("Eidetic MCP Server handles project memory and observation storage.")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::MemoryStore;
+
+    #[tokio::test]
+    async fn test_server_info() {
+        let (store, _dir) = MemoryStore::setup_test_store().await;
+        let server = EideticServer::new(store);
+
+        let info = server.get_info();
+        assert_eq!(info.server_info.name, "eidetic-mcp-server");
+        assert!(info.capabilities.tools.is_some());
+    }
+}
