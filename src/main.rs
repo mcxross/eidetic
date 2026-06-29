@@ -7,6 +7,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod auth;
 mod config;
+mod constants;
 mod harbor;
 mod memory;
 mod server;

@@ -629,6 +629,12 @@ fn draw_config(f: &mut Frame, app: &App, area: Rect) {
         .config
         .memwal_relayer_config_url
         .clone()
+        .or_else(|| {
+            app.config
+                .memwal_server_url
+                .as_ref()
+                .map(|url| format!("{}/config (default)", url))
+        })
         .unwrap_or_else(|| String::from("(none)"));
     rows.push(Row::new(vec![
         Cell::from("memwal_relayer_config_url"),
@@ -639,7 +645,7 @@ fn draw_config(f: &mut Frame, app: &App, area: Rect) {
         .config
         .memwal_namespace
         .clone()
-        .unwrap_or_else(|| String::from("(none)"));
+        .unwrap_or_else(|| String::from("eidetic (default)"));
     rows.push(Row::new(vec![
         Cell::from("memwal_namespace"),
         Cell::from(memwal_namespace),
@@ -649,25 +655,32 @@ fn draw_config(f: &mut Frame, app: &App, area: Rect) {
         .config
         .memwal_delegate_label
         .clone()
-        .unwrap_or_else(|| String::from("(none)"));
+        .unwrap_or_else(|| String::from("(generated at setup)"));
     rows.push(Row::new(vec![
         Cell::from("memwal_delegate_label"),
         Cell::from(memwal_delegate_label),
     ]));
 
-    if let Some(ref pk) = app.config.private_key {
-        let masked = if pk.len() > 10 {
-            format!("{}...{}", &pk[0..6], &pk[pk.len() - 4..])
-        } else {
-            "****".to_string()
-        };
+    if app.config.private_key.is_some() {
         rows.push(Row::new(vec![
             Cell::from("private_key"),
-            Cell::from(masked),
+            Cell::from("********"),
         ]));
     } else {
         rows.push(Row::new(vec![
             Cell::from("private_key"),
+            Cell::from("(none)"),
+        ]));
+    }
+
+    if crate::harbor::HarborCredentials::is_configured() {
+        rows.push(Row::new(vec![
+            Cell::from("harbor.api_key"),
+            Cell::from("********"),
+        ]));
+    } else {
+        rows.push(Row::new(vec![
+            Cell::from("harbor.api_key"),
             Cell::from("(none)"),
         ]));
     }
