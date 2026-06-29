@@ -40,8 +40,6 @@ pub struct EideticConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sui_config_dir: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub private_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub harbor: Option<HarborConfig>,
 }
 
@@ -119,26 +117,24 @@ mod tests {
 
         let config: EideticConfig = serde_json::from_str(json_str).unwrap();
 
-        assert_eq!(config.storage_backend.as_deref(), Some("memwal"));
         assert_eq!(config.memwal_account_id.as_deref(), Some("acc_123"));
         assert_eq!(
             config.sui_config_dir.unwrap().to_str(),
             Some("/custom/path")
         );
-        assert!(config.private_key.is_none());
     }
 
     #[test]
     fn test_partial_update_serialization() {
         let config = EideticConfig {
-            private_key: Some("suiprivkey123".to_string()),
+            memwal_account_id: Some("acc_123".to_string()),
             ..Default::default()
         };
 
         let serialized = serde_json::to_string(&config).unwrap();
         let json_val: serde_json::Value = serde_json::from_str(&serialized).unwrap();
 
-        assert_eq!(json_val["private_key"], "suiprivkey123");
+        assert_eq!(json_val["memwal_account_id"], "acc_123");
         assert!(json_val.get("storage_backend").is_none());
     }
 }

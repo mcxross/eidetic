@@ -115,8 +115,8 @@ async fn main() -> anyhow::Result<()> {
     if cli.sui_config_dir.is_some() {
         config.sui_config_dir = cli.sui_config_dir.clone().map(std::path::PathBuf::from);
     }
-    if cli.private_key.is_some() {
-        config.private_key = cli.private_key.clone();
+    if let Some(ref key) = cli.private_key {
+        let _ = crate::auth::KeychainManager::store_private_key(key);
     }
 
     let backend = config
@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
         .exists();
 
     let mut config_changed = false;
-    if backend == "memwal" && !has_sui_config && config.private_key.is_none() {
+    if backend == "memwal" && !has_sui_config && !crate::auth::KeychainManager::is_configured() {
         tracing::info!(
             "No Sui config or private key found. Generating a new one for Memwal backend..."
         );
@@ -147,7 +147,7 @@ async fn main() -> anyhow::Result<()> {
         let suiprivkey = signer
             .to_suiprivkey()
             .map_err(|e| anyhow::anyhow!("Failed to format suiprivkey: {}", e))?;
-        config.private_key = Some(suiprivkey);
+        let _ = crate::auth::KeychainManager::store_private_key(&suiprivkey);
         config_changed = true;
     }
 
@@ -202,9 +202,9 @@ async fn run_info(config: config::EideticConfig) -> anyhow::Result<()> {
 
     println!("\n=== Sui Identity ===");
 
-    if let Some(suiprivkey) = &config.private_key {
+    if let Ok(suiprivkey) = crate::auth::KeychainManager::load_private_key() {
         use memwal_core::MemWalSigner;
-        let signer = memwal_core::Ed25519Signer::from_suiprivkey(suiprivkey)
+        let signer = memwal_core::Ed25519Signer::from_suiprivkey(&suiprivkey)
             .map_err(|e| anyhow::anyhow!("Failed to parse configured private key: {}", e))?;
 
         let address = signer
@@ -213,7 +213,7 @@ async fn run_info(config: config::EideticConfig) -> anyhow::Result<()> {
 
         let address_hex = format!("0x{}", hex::encode(address.into_inner()));
         println!("Active Address: {}", address_hex);
-        println!("Source: config.json (private_key)");
+        println!("Source: system keychain (private_key)");
         println!(
             "\nIf you are using Memwal, please ensure this address is funded with SUI for gas fees."
         );
@@ -238,7 +238,6 @@ fn auth_config_from_config(config: &config::EideticConfig) -> crate::auth::Memwa
         namespace: config.memwal_namespace.clone(),
         delegate_label: config.memwal_delegate_label.clone(),
         sui_config_dir: config.sui_config_dir.clone(),
-        private_key: config.private_key.clone(),
     }
 }
 

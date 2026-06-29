@@ -661,7 +661,7 @@ fn draw_config(f: &mut Frame, app: &App, area: Rect) {
         Cell::from(memwal_delegate_label),
     ]));
 
-    if app.config.private_key.is_some() {
+    if crate::auth::KeychainManager::is_configured() {
         rows.push(Row::new(vec![
             Cell::from("private_key"),
             Cell::from("********"),

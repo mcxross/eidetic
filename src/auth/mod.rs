@@ -1,7 +1,10 @@
+mod keychain;
+
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+pub use keychain::KeychainManager;
 use memwal_core::{Ed25519Signer, MemWal, MemWalProvisionConfig, MemWalSigner};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -16,7 +19,6 @@ pub struct MemwalAuthConfig {
     pub namespace: Option<String>,
     pub delegate_label: Option<String>,
     pub sui_config_dir: Option<PathBuf>,
-    pub private_key: Option<String>,
 }
 
 impl MemwalAuthConfig {
@@ -271,9 +273,9 @@ impl AuthManager {
     }
 
     async fn select_default_account(&self) -> anyhow::Result<()> {
-        if let Some(suiprivkey) = &self.config.private_key {
-            let signer = signer_from_keystore_entry(suiprivkey)
-                .with_context(|| "Failed to parse provided private_key")?;
+        if let Ok(suiprivkey) = KeychainManager::load_private_key() {
+            let signer = signer_from_keystore_entry(&suiprivkey)
+                .with_context(|| "Failed to parse provided private_key from keychain")?;
             let address = normalize_address(&signer.address()?.to_string());
             let mut state = self.state.write().await;
             state.selected = Some(SelectedAccount {

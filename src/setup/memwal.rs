@@ -16,7 +16,7 @@ pub async fn setup_memwal() -> Result<()> {
         .join("client.yaml")
         .exists();
 
-    if !has_sui_config && config.private_key.is_none() {
+    if !has_sui_config && !crate::auth::KeychainManager::is_configured() {
         println!(
             "No Sui config or private key found. Generating a new Ed25519 signer for Memwal..."
         );
@@ -25,7 +25,7 @@ pub async fn setup_memwal() -> Result<()> {
         let suiprivkey = signer
             .to_suiprivkey()
             .map_err(|e| anyhow::anyhow!("Failed to format suiprivkey: {}", e))?;
-        config.private_key = Some(suiprivkey);
+        let _ = crate::auth::KeychainManager::store_private_key(&suiprivkey);
         config.storage_backend = Some("memwal".to_string());
         config.save().await?;
         println!("Generated new private key and saved to config.");
@@ -39,15 +39,14 @@ pub async fn setup_memwal() -> Result<()> {
         namespace: config.memwal_namespace.clone(),
         delegate_label: config.memwal_delegate_label.clone(),
         sui_config_dir: config.sui_config_dir.clone(),
-        private_key: config.private_key.clone(),
     };
     let temp_auth = crate::auth::AuthManager::new(auth_config.clone()).await?;
     let snapshot_opt = temp_auth.config_snapshot().await.ok();
 
     // Try to get the address
-    let address = if let Some(suiprivkey) = &config.private_key {
+    let address = if let Ok(suiprivkey) = crate::auth::KeychainManager::load_private_key() {
         use memwal_core::MemWalSigner;
-        let signer = memwal_core::Ed25519Signer::from_suiprivkey(suiprivkey)
+        let signer = memwal_core::Ed25519Signer::from_suiprivkey(&suiprivkey)
             .map_err(|e| anyhow::anyhow!("Failed to parse private key: {}", e))?;
         let addr = signer
             .address()
