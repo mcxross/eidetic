@@ -20,6 +20,7 @@ Agents can automatically store, recall, deduplicate, and review project knowledg
   - [SQLite](#sqlite)
   - [File](#file)
 - [MCP Tools](#mcp-tools)
+- [Harbor Backups & Artifacts](#harbor-backups--artifacts)
 - [TUI Storage Inspector](#tui-storage-inspector)
 - [License](#license)
 
@@ -50,13 +51,22 @@ cd eidetic
 cargo install --path .
 ```
 
-### 3. Updating Eidetic
-Eidetic includes a built-in native self-updater. To fetch the latest optimized release binary from GitHub and replace your current executable in-place:
 
+### Account Setup: Memwal & Harbor
+
+**Memwal Setup**
+To fully automate the creation, registration, and funding of a Memwal backend account on the Sui network, use:
 ```bash
-eidetic update
+eidetic setup memwal
 ```
-*(Note: If installed via NPM, you can also use `npm update -g eidetic-mcp`, but `eidetic update` is the fastest way to get the latest native patch).*
+This interactive command guides you through generating an identity
+
+**Harbor Setup**
+To enable secure database backups and artifact storage, configure Harbor:
+```bash
+eidetic setup harbor
+```
+You will be prompted for your Harbor API Key and Service Private Key. These are stored securely in your system's native keychain.
 
 ---
 
@@ -85,16 +95,6 @@ eidetic setup cursor
 ```
 This will automatically parse your `~/.cursor/mcp.json` file, safely merge Eidetic as an available MCP server, and point the agent to the exact Eidetic executable path.
 
-### Memwal Provisioning
-To completely automate the creation, registration, and funding of a Memwal backend account on the Sui network, use:
-
-```bash
-eidetic setup memwal
-```
-This guides the user and agent through generating an identity and polling for gas to provision the registry.
-
----
-
 ## Features
 
 ### MCP Server
@@ -102,7 +102,7 @@ Start the MCP server manually (usually handled automatically by your agent):
 ```bash
 eidetic serve
 ```
-By default, the server uses a SQLite database to store memories locally.
+By default, the server uses Memwal to store semantic memories.
 
 ### Configuration
 Eidetic persists its configuration in `~/.eidetic/config.json`. This includes your storage backend preferences, custom paths, and Memwal configurations.
@@ -120,22 +120,20 @@ Eidetic supports multiple storage layers through `--storage-backend` or the `EID
 
 Available backends:
 
-| Backend | Use case | Persistence |
-| --- | --- | --- |
-| `memwal` | Semantic memory backed by Memwal, with local SQLite exact CRUD index | Memwal remote storage plus local SQLite index |
-| `sqlite` | Default local storage | Local SQLite database |
-| `file` | Simple JSON file storage | Local JSON files |
+| `memwal` | Default semantic memory network |
+| `sqlite` | Local relational database |
+| `file` | Simple JSON file storage |
 
 Use `--storage-path` or `EIDETIC_STORAGE_PATH` to choose the local storage/index directory.
 
-### Memwal
+### Memwal (Default)
 
-Memwal is the recommended backend when you want Eidetic memories to be searchable through Memwal while preserving Eidetic's MCP behavior for exact reads, updates, deletes, projects, sessions, prompts, and relations.
+Memwal is the default decentralized semantic memory network for Eidetic.
 
-Start the MCP server with Memwal:
+Start the MCP server with Memwal (default behavior):
 
 ```bash
-eidetic --storage-backend memwal serve
+eidetic serve
 ```
 
 Or configure it with environment variables:
@@ -181,13 +179,15 @@ mem_select_sui_account { "selector": "my-sui-alias-or-0x-address" }
 mem_memwal_config
 ```
 
-Account selection is process-local. Eidetic does not mutate `~/.sui/client.yaml` and does not persist the selected Memwal account across server restarts. If no account is selected after restart, Eidetic reloads `~/.sui` and falls back to Sui's `active_address`.
+Account selection is process-local. Eidetic does not persist the selected Memwal account across server restarts. If no account is selected after restart, Eidetic reloads `~/.sui` and falls back to Sui's `active_address`.
 
-Memwal writes store a stable Eidetic payload in Memwal and also write a local SQLite index. Search first attempts Memwal recall, then falls back to the local SQLite index for exact matching and compatibility.
+### Other Storage Options
 
-### SQLite
+If you prefer to store data strictly locally, Eidetic offers alternative backends.
 
-SQLite is the default backend and requires no external services:
+#### SQLite
+
+SQLite requires no external services:
 
 ```bash
 eidetic --storage-backend sqlite serve
@@ -199,11 +199,9 @@ Choose a custom database directory:
 eidetic --storage-backend sqlite --storage-path ~/.local/share/eidetic-mcp/storage serve
 ```
 
-SQLite stores all projects, observations, sessions, prompts, relations, and search index data locally.
+#### File
 
-### File
-
-The file backend stores JSON documents on disk:
+The file backend stores JSON documents directly on disk:
 
 ```bash
 eidetic --storage-backend file serve
@@ -269,6 +267,12 @@ Eidetic exposes the following MCP tools to connected agents.
 | `mem_doctor` | Run read-only diagnostics for project detection and storage health |
 | `eidetic_status` | Return server health, current config, and actionable Memwal gas errors |
 
+### Artifact Management
+| Tool | Purpose |
+| --- | --- |
+| `mem_save_artifact` | Upload raw bytes (code, images, etc.) to Harbor and save a reference locally or semantically |
+| `mem_get_artifact` | Download and decode an artifact from Harbor using its File ID |
+
 ### Memwal Account Tools
 
 These tools are available when the server is running with `--storage-backend memwal`.
@@ -278,6 +282,25 @@ These tools are available when the server is running with `--storage-backend mem
 | `mem_sui_accounts` | List usable Sui accounts discovered from `~/.sui` without exposing private keys |
 | `mem_select_sui_account` | Select the Sui account used by Memwal operations for the current server process |
 | `mem_memwal_config` | Show redacted active Memwal account and backend configuration |
+
+---
+
+## Harbor Backups & Artifacts
+
+Eidetic natively integrates with [Harbor](https://harbor.com) for secure object storage. Once configured (`eidetic setup harbor`), you can safely backup your local database or store model-generated artifacts.
+
+### Database Backups
+Snapshot and upload your local database to Harbor:
+```bash
+eidetic backup
+```
+Restore a specific backup:
+```bash
+eidetic restore monday
+```
+
+### Artifacts
+When an agent creates an artifact (like code or images), it is sent directly to Harbor. A semantic reference is then saved to your active memory backend. Agents can seamlessly recall and download these artifacts using their natural context.
 
 ### TUI Storage Inspector
 Eidetic comes with a built-in Terminal UI to easily inspect, search, review, and delete the memories stored by your agents.
