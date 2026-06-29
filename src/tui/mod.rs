@@ -138,6 +138,9 @@ pub async fn run(
                         Action::MarkReviewed => {
                             let _ = app.mark_reviewed_selected().await;
                         }
+                        Action::OpenArtifact => {
+                            let _ = app.open_selected_artifacts().await;
+                        }
                         Action::Search => {
                             app.tab = Tab::Search;
                             app.input_mode = true;

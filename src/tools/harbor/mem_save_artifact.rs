@@ -10,11 +10,16 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use std::sync::Arc;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize, JsonSchema)]
 pub struct MemSaveArtifactParams {
     pub filename: String,
-    pub content: String,
-    #[serde(default)]
+    pub content: Option<String>,
+    pub file_path: Option<String>,
+    #[serde(default = "default_true")]
     pub encrypt: bool,
     pub topic_key: Option<String>,
     pub project_id: Option<String>,
@@ -53,10 +58,23 @@ impl MemSaveArtifact {
 
         let artifact_manager = ArtifactManager::new(&credentials, harbor_config, auth);
 
+        let content = if let Some(path) = &params.0.file_path {
+            tokio::fs::read(path).await.map_err(|e| {
+                McpError::internal_error(format!("Failed to read file at {}: {}", path, e), None)
+            })?
+        } else if let Some(content) = &params.0.content {
+            content.as_bytes().to_vec()
+        } else {
+            return Err(McpError::invalid_params(
+                "Either content or file_path must be provided".to_string(),
+                None,
+            ));
+        };
+
         let result = artifact_manager
             .upload_artifact(
                 &params.0.filename,
-                params.0.content.as_bytes(),
+                &content,
                 params.0.encrypt,
             )
             .await

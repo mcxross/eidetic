@@ -526,9 +526,9 @@ fn draw_confirm_dialog(f: &mut Frame, app: &App, area: Rect) {
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let keybinds = match app.detail {
         DetailView::None => {
-            "q:Quit  Tab:Switch  ↑↓:Nav  Enter:Select  /:Search  d:Del  D:HardDel  r:Review  n/p:Page"
+            "q:Quit  Tab:Switch  ↑↓:Nav  Enter:Select  /:Search  d:Del  D:HardDel  o:Open  r:Review  n/p:Page"
         }
-        _ => "Esc:Back  q:Quit",
+        _ => "Esc:Back  q:Quit  o:Open",
     };
     let status_text = if app.status.is_empty() {
         keybinds.to_string()

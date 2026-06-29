@@ -26,9 +26,20 @@ pub struct ArtifactManager {
 impl ArtifactManager {
     pub fn new(
         credentials: &HarborCredentials,
-        config: HarborConfig,
+        mut config: HarborConfig,
         auth: Arc<AuthManager>,
     ) -> Self {
+        if config.seal_package_id.is_none() {
+            config.seal_package_id = Some("0x8b2429358e9b0f005b69fe8ad3cbd1268ad87f35047a21612e082c64824faf8d".to_string());
+        }
+        if config.seal_key_server_ids.is_none() {
+            config.seal_key_server_ids = Some(vec![
+                "0x6068c0acb197dddbacd4746a9de7f025b2ed5a5b6c1b1ab44dade4426d141da2".to_string(),
+                "0x164ac3d2b3b8694b8181c13f671950004765c23f270321a45fdd04d40cccf0f2".to_string(),
+                "0x9c949e53c36ab7a9c484ed9e8b43267a77d4b8d70e79aa6b39042e3d4c434105".to_string(),
+            ]);
+        }
+
         let harbor = HarborClient::new(HarborClientOptions {
             api_key: credentials.api_key.clone(),
             ..Default::default()

@@ -430,4 +430,122 @@ impl App {
         }
         Ok(())
     }
+
+    pub async fn open_selected_artifacts(&mut self) -> anyhow::Result<()> {
+        if let Some(obs) = self.selected_observation() {
+            let mut artifacts = Vec::new();
+            let mut parts = obs.content.split("[ARTIFACT REFERENCE]\n");
+            let _ = parts.next(); // skip before first reference
+
+            for block in parts {
+                let mut filename = String::new();
+                let mut file_id = String::new();
+                let mut encrypted = false;
+                let mut seal_id = None;
+
+                for line in block.lines() {
+                    if let Some(rest) = line.strip_prefix("Filename: ") {
+                        filename = rest.to_string();
+                    } else if let Some(rest) = line.strip_prefix("Harbor File ID: ") {
+                        file_id = rest.to_string();
+                    } else if let Some(rest) = line.strip_prefix("Encrypted: ") {
+                        encrypted = rest == "true";
+                    } else if let Some(rest) = line.strip_prefix("Seal ID: ") {
+                        if let Ok(bytes) = hex::decode(rest.trim()) {
+                            seal_id = Some(bytes);
+                        }
+                    }
+                }
+
+                if !filename.is_empty() && !file_id.is_empty() {
+                    artifacts.push((filename, file_id, encrypted, seal_id));
+                }
+            }
+
+            if artifacts.is_empty() {
+                self.status = "No artifacts found in this observation".to_string();
+                return Ok(());
+            }
+
+            self.status = format!("Downloading {} artifact(s)...", artifacts.len());
+
+            let harbor_config = if let Some(hc) = &self.config.harbor {
+                hc.clone()
+            } else {
+                self.status = "Harbor is not configured".to_string();
+                return Ok(());
+            };
+
+            let credentials = match crate::harbor::HarborCredentials::load() {
+                Ok(c) => c,
+                Err(e) => {
+                    self.status = format!("Harbor credentials error: {}", e);
+                    return Ok(());
+                }
+            };
+
+            // Instantiate fresh AuthManager for artifact downloads
+            let auth_config = crate::auth::MemwalAuthConfig {
+                account_id: self.config.memwal_account_id.clone(),
+                registry_id: self.config.memwal_registry_id.clone(),
+                server_url: self.config.memwal_server_url.clone(),
+                relayer_config_url: self.config.memwal_relayer_config_url.clone(),
+                namespace: self.config.memwal_namespace.clone(),
+                delegate_label: self.config.memwal_delegate_label.clone(),
+                sui_config_dir: self.config.sui_config_dir.clone(),
+            };
+            let auth = match crate::auth::AuthManager::new(auth_config).await {
+                Ok(a) => std::sync::Arc::new(a),
+                Err(e) => {
+                    self.status = format!("AuthManager error: {}", e);
+                    return Ok(());
+                }
+            };
+
+            let manager = crate::harbor::artifacts::ArtifactManager::new(&credentials, harbor_config, auth);
+
+            let tmp_dir = std::env::temp_dir().join("eidetic_artifacts");
+            if let Err(e) = tokio::fs::create_dir_all(&tmp_dir).await {
+                self.status = format!("Failed to create tmp dir: {}", e);
+                return Ok(());
+            }
+
+            let mut opened = 0;
+            for (filename, file_id, encrypted, seal_id) in artifacts {
+                match manager.download_artifact(&file_id, encrypted, seal_id).await {
+                    Ok(bytes) => {
+                        let path = tmp_dir.join(&filename);
+                        if let Err(e) = tokio::fs::write(&path, bytes).await {
+                            tracing::error!("Failed to write artifact: {:?}", e);
+                            continue;
+                        }
+
+                        let res = if cfg!(target_os = "macos") {
+                            std::process::Command::new("open").arg(&path).spawn()
+                        } else if cfg!(target_os = "linux") {
+                            std::process::Command::new("xdg-open").arg(&path).spawn()
+                        } else if cfg!(target_os = "windows") {
+                            std::process::Command::new("cmd").args(["/C", "start", ""]).arg(&path).spawn()
+                        } else {
+                            Err(std::io::Error::new(std::io::ErrorKind::Other, "Unsupported OS for open"))
+                        };
+
+                        if let Err(e) = res {
+                            tracing::error!("Failed to open artifact {}: {:?}", filename, e);
+                        } else {
+                            opened += 1;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to download artifact {}: {:?}", file_id, e);
+                    }
+                }
+            }
+
+            self.status = format!("Opened {} artifact(s)", opened);
+        } else {
+            self.status = "No observation selected".to_string();
+        }
+        Ok(())
+    }
 }
