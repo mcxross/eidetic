@@ -535,9 +535,7 @@ impl App {
                                 .arg(&path)
                                 .spawn()
                         } else {
-                            Err(std::io::Error::other(
-                                "Unsupported OS for open",
-                            ))
+                            Err(std::io::Error::other("Unsupported OS for open"))
                         };
 
                         if let Err(e) = res {
