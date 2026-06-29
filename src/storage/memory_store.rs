@@ -1,6 +1,6 @@
 use crate::auth::{AuthManager, MemwalAuthConfig};
 use crate::memory::types::*;
-use crate::storage::{FileStorage, MemwalStorage, Storage, get_storage_path};
+use crate::storage::{FileStorage, Storage, get_storage_path};
 use std::sync::Arc;
 
 pub struct MemoryStore {
@@ -29,7 +29,7 @@ impl MemoryStore {
             }
             "memwal" => {
                 let auth = Arc::new(AuthManager::new(auth_config).await?);
-                let storage = MemwalStorage::new(path, auth.clone()).await?;
+                let storage = crate::storage::SqliteStorage::new(path).await?;
                 auth_manager = Some(auth);
                 Arc::new(storage)
             }

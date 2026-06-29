@@ -37,6 +37,9 @@ pub struct EideticServer {
     mem_review: MemReview,
     mem_judge: MemJudge,
     mem_compare: MemCompare,
+    memwal_remember: MemwalRemember,
+    memwal_recall: MemwalRecall,
+    memwal_batch: MemwalBatch,
     eidetic_status: crate::tools::utility::status::EideticStatus,
 }
 
@@ -67,6 +70,9 @@ impl EideticServer {
             mem_review: MemReview::new(store.clone()),
             mem_judge: MemJudge::new(store.clone()),
             mem_compare: MemCompare::new(store.clone()),
+            memwal_remember: MemwalRemember::new(store.clone()),
+            memwal_recall: MemwalRecall::new(store.clone()),
+            memwal_batch: MemwalBatch::new(store.clone()),
             eidetic_status: crate::tools::utility::status::EideticStatus::new(store.clone()),
             store,
         }
@@ -279,6 +285,30 @@ impl EideticServer {
         params: Parameters<crate::tools::utility::mem_memwal_config::MemMemwalConfigParams>,
     ) -> Result<CallToolResult, McpError> {
         self.mem_memwal_config.mem_memwal_config(params).await
+    }
+
+    #[tool(description = "Store memory directly in the Memwal backend")]
+    async fn memwal_remember(
+        &self,
+        params: Parameters<crate::tools::memwal::memwal_remember::MemwalRememberParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.memwal_remember.memwal_remember(params).await
+    }
+
+    #[tool(description = "Recall memories directly from the Memwal backend")]
+    async fn memwal_recall(
+        &self,
+        params: Parameters<crate::tools::memwal::memwal_recall::MemwalRecallParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.memwal_recall.memwal_recall(params).await
+    }
+
+    #[tool(description = "Store a batch of memories directly in the Memwal backend")]
+    async fn memwal_batch(
+        &self,
+        params: Parameters<crate::tools::memwal::memwal_batch::MemwalBatchParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.memwal_batch.memwal_batch(params).await
     }
 }
 

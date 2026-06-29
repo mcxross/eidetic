@@ -4,12 +4,10 @@ use std::path::PathBuf;
 
 pub mod file_storage;
 pub mod memory_store;
-pub mod memwal_storage;
 pub mod sqlite_storage;
 
 pub use file_storage::FileStorage;
 pub use memory_store::MemoryStore;
-pub use memwal_storage::MemwalStorage;
 pub use sqlite_storage::SqliteStorage;
 
 #[async_trait]
