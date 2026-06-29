@@ -29,7 +29,7 @@ pub struct Cli {
         short,
         long,
         env = "EIDETIC_STORAGE_BACKEND",
-        default_value = "sqlite",
+        default_value = "memwal",
         global = true
     )]
     pub storage_backend: String,
@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
     let mut config = config::EideticConfig::load().await?;
 
     // 2. Merge CLI arguments (CLI takes precedence)
-    if cli.storage_backend != "sqlite" || config.storage_backend.is_none() {
+    if cli.storage_backend != "memwal" || config.storage_backend.is_none() {
         config.storage_backend = Some(cli.storage_backend.clone());
     }
     if cli.storage_path.is_some() {
@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
     let backend = config
         .storage_backend
         .clone()
-        .unwrap_or_else(|| "sqlite".to_string());
+        .unwrap_or_else(|| "memwal".to_string());
 
     // 3. Auto-generate private key if no Sui config and no key provided (ONLY for memwal)
     let has_sui_config = config
@@ -181,7 +181,7 @@ async fn run_info(config: config::EideticConfig) -> anyhow::Result<()> {
 
     println!(
         "Storage Backend: {}",
-        config.storage_backend.as_deref().unwrap_or("sqlite")
+        config.storage_backend.as_deref().unwrap_or("memwal")
     );
     if let Some(path) = &config.storage_path {
         println!("Storage Path: {}", path);

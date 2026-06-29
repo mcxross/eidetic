@@ -568,7 +568,7 @@ fn draw_config(f: &mut Frame, app: &App, area: Rect) {
         .config
         .storage_backend
         .clone()
-        .unwrap_or_else(|| String::from("(default)"));
+        .unwrap_or_else(|| String::from("memwal (default)"));
     rows.push(Row::new(vec![
         Cell::from("storage_backend"),
         Cell::from(storage_backend),
