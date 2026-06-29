@@ -167,7 +167,14 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        Commands::Tui => run_tui(backend, storage_path, auth_config, config).await,
+        Commands::Tui => {
+            let tui_backend = if backend == "memwal" {
+                "sqlite".to_string()
+            } else {
+                backend
+            };
+            run_tui(tui_backend, storage_path, auth_config, config).await
+        }
         Commands::Setup { agent } => setup::run(&agent).await,
         Commands::Update => update::update().await,
         Commands::Info => run_info(config).await,
