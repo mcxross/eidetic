@@ -17,6 +17,7 @@ pub struct MemSaveArtifactParams {
     #[serde(default)]
     pub encrypt: bool,
     pub topic_key: Option<String>,
+    pub project_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -83,10 +84,14 @@ impl MemSaveArtifact {
             serde_json::Value::String(params.0.filename.clone()),
         );
 
-        let project_id = store
-            .get_current_project()
-            .await
-            .ok_or_else(|| McpError::internal_error("No active project", None))?;
+        let project_id = if let Some(pid) = params.0.project_id {
+            pid
+        } else {
+            store
+                .get_current_project()
+                .await
+                .ok_or_else(|| McpError::internal_error("No active project", None))?
+        };
 
         let session_id = store.get_current_session().await;
 
@@ -95,7 +100,7 @@ impl MemSaveArtifact {
 
         let obs = Observation {
             id: id.clone(),
-            project_id,
+            project_id: project_id.clone(),
             session_id,
             title: format!("Artifact: {}", params.0.filename),
             memory_type: MemoryType::Artifact,
@@ -139,9 +144,9 @@ impl MemSaveArtifact {
                 params.0.filename, result.file_id, result.is_encrypted, seal_id_str
             );
 
-            let ns = store.get_current_project().await;
+            let actual_ns = project_id; // we already resolved this above
             unstructured
-                .remember(&text, ns.as_deref())
+                .remember(&text, Some(&actual_ns))
                 .await
                 .map_err(|e| {
                     McpError::internal_error(
