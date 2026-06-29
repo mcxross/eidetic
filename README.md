@@ -8,6 +8,8 @@ Agents can automatically store, recall, deduplicate, and review project knowledg
 
 ---
 
+![Eidetic TUI](assets/eidetic-tui.png)
+
 ## Index
 
 - [Installation](#installation)
