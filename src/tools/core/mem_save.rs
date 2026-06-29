@@ -196,13 +196,16 @@ impl MemSave {
                 obs.title, obs.id
             ))]))
         } else if let Some(unstructured) = storage.as_unstructured() {
-            let project = self
-                .store
-                .get_or_create_project(None)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-            
-            let namespace = project.id.clone();
+            let namespace = if let Some(pid) = &params.project_id {
+                Project::canonicalize(pid)
+            } else {
+                let project = self
+                    .store
+                    .get_or_create_project(None)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                project.id
+            };
             
             let text_to_remember = format!(
                 "Title: {}\nType: {:?}\nTags: {:?}\n\n{}",

@@ -90,6 +90,13 @@ fn draw_tab_content(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_projects(f: &mut Frame, app: &App, area: Rect) {
+    if app.storage.as_structured().is_none() {
+        let p = Paragraph::new("Semantic mode active.\n\nProjects, Observations, and Sessions are disabled in native Memwal mode.\nUse the Search tab to query the network.")
+            .block(Block::default().borders(Borders::ALL).title(" Projects [Disabled] "));
+        f.render_widget(p, area);
+        return;
+    }
+
     let header = Row::new(vec!["Name", "Path", "Created"]).style(
         Style::default()
             .fg(Color::Yellow)
@@ -134,6 +141,13 @@ fn draw_projects(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_observations(f: &mut Frame, app: &App, area: Rect) {
+    if app.storage.as_structured().is_none() {
+        let p = Paragraph::new("Semantic mode active.\n\nProjects, Observations, and Sessions are disabled in native Memwal mode.\nUse the Search tab to query the network.")
+            .block(Block::default().borders(Borders::ALL).title(" Observations [Disabled] "));
+        f.render_widget(p, area);
+        return;
+    }
+
     let header = Row::new(vec!["Type", "Scope", "Title", "State", "Updated", "Topic"]).style(
         Style::default()
             .fg(Color::Yellow)
@@ -188,6 +202,13 @@ fn draw_observations(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_sessions(f: &mut Frame, app: &App, area: Rect) {
+    if app.storage.as_structured().is_none() {
+        let p = Paragraph::new("Semantic mode active.\n\nProjects, Observations, and Sessions are disabled in native Memwal mode.\nUse the Search tab to query the network.")
+            .block(Block::default().borders(Borders::ALL).title(" Sessions [Disabled] "));
+        f.render_widget(p, area);
+        return;
+    }
+
     let header = Row::new(vec!["ID", "Started", "Ended", "Summary"]).style(
         Style::default()
             .fg(Color::Yellow)

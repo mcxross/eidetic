@@ -51,6 +51,7 @@ impl Storage for MemwalStorage {
 impl UnstructuredStorage for MemwalStorage {
     async fn remember(&self, text: &str, namespace: Option<&str>) -> anyhow::Result<String> {
         let client = self.auth_manager.memwal_client().await?;
+        tracing::info!("MemwalStorage::remember -> namespace={:?}, text_len={}", namespace, text.len());
         if let Some(ns) = namespace {
             let item = RememberBulkItem {
                 text: text.to_string(),
@@ -58,15 +59,19 @@ impl UnstructuredStorage for MemwalStorage {
             };
             // Bulk remember array of 1
             let job_ids = client.remember_bulk(&[item]).await?;
-            Ok(job_ids.job_ids.first().cloned().unwrap_or_default())
+            let job_id = job_ids.job_ids.first().cloned().unwrap_or_default();
+            tracing::info!("MemwalStorage::remember bulk completed -> job_id={}", job_id);
+            Ok(job_id)
         } else {
             let job_id = client.remember_async(text).await?;
+            tracing::info!("MemwalStorage::remember_async completed -> job_id={}", job_id.job_id);
             Ok(job_id.job_id)
         }
     }
 
     async fn recall(&self, query: &str, namespace: Option<&str>) -> anyhow::Result<Vec<String>> {
         let client = self.auth_manager.memwal_client().await?;
+        tracing::info!("MemwalStorage::recall -> namespace={:?}, query='{}'", namespace, query);
         let params = RecallParams {
             query: query.to_string(),
             namespace: namespace.map(|s| s.to_string()),
@@ -76,6 +81,7 @@ impl UnstructuredStorage for MemwalStorage {
         };
 
         let results = client.recall(params).await?;
+        tracing::info!("MemwalStorage::recall completed -> found {} results", results.results.len());
         Ok(results.results.into_iter().map(|item| item.text).collect())
     }
 }

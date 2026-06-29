@@ -97,13 +97,16 @@ impl MemSearch {
                 output
             ))]))
         } else if let Some(unstructured) = storage.as_unstructured() {
-            let project = self
-                .store
-                .get_or_create_project(None)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-            
-            let namespace = project.id.clone();
+            let namespace = if let Some(pid) = &params.project_id {
+                crate::memory::types::Project::canonicalize(pid)
+            } else {
+                let project = self
+                    .store
+                    .get_or_create_project(None)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+                project.id
+            };
 
             let limit = params.limit.unwrap_or(20).min(500);
             

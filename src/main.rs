@@ -167,14 +167,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        Commands::Tui => {
-            let tui_backend = if backend == "memwal" {
-                "sqlite".to_string()
-            } else {
-                backend
-            };
-            run_tui(tui_backend, storage_path, auth_config, config).await
-        }
+        Commands::Tui => run_tui(backend, storage_path, auth_config, config).await,
         Commands::Setup { agent } => setup::run(&agent).await,
         Commands::Update => update::update().await,
         Commands::Info => run_info(config).await,
@@ -248,6 +241,27 @@ fn auth_config_from_config(config: &config::EideticConfig) -> crate::auth::Memwa
     }
 }
 
+fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
+    let mut log_dir = dirs::home_dir().unwrap_or_default();
+    log_dir.push(".eidetic");
+    log_dir.push("logs");
+    std::fs::create_dir_all(&log_dir).unwrap_or_default();
+
+    let file_appender = tracing_appender::rolling::never(log_dir, "eidetic.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false)
+        )
+        .init();
+        
+    guard
+}
+
 async fn run_server(
     backend: String,
     path: Option<String>,
@@ -255,12 +269,9 @@ async fn run_server(
     mut eidetic_config: config::EideticConfig,
     mut config_changed: bool,
 ) -> anyhow::Result<()> {
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    let _guard = init_tracing();
 
-    tracing::info!("Starting Eidetic MCP Server...");
+    tracing::info!("Starting Eidetic MCP Server with backend: {}", backend);
 
     let store = crate::storage::MemoryStore::new(backend, path, auth_config).await?;
 
@@ -303,6 +314,8 @@ async fn run_tui(
     auth_config: crate::auth::MemwalAuthConfig,
     config: crate::config::EideticConfig,
 ) -> anyhow::Result<()> {
+    let _guard = init_tracing();
+    tracing::info!("Starting Eidetic TUI with backend: {}", backend);
     let store = crate::storage::MemoryStore::new(backend, path, auth_config).await?;
     let storage: Arc<dyn crate::storage::Storage> = store.storage();
     crate::tui::run(storage, config).await

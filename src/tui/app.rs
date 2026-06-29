@@ -111,25 +111,40 @@ impl App {
         }
     }
 
-    pub fn structured(&self) -> &dyn crate::storage::StructuredStorage {
-        self.storage.as_structured().expect("TUI requires a structured storage backend")
-    }
+
 
     pub async fn load_projects(&mut self) -> anyhow::Result<()> {
-        self.projects = self.structured().list_projects().await?;
-        self.projects.sort_by(|a, b| a.name.cmp(&b.name));
+        if let Some(structured) = self.storage.as_structured() {
+            self.projects = structured.list_projects().await?;
+            self.projects.sort_by(|a, b| a.name.cmp(&b.name));
+        } else {
+            let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().to_string();
+            let name = std::path::Path::new(&cwd).file_name().unwrap_or_default().to_string_lossy().to_string();
+            let mut project = crate::memory::types::Project::new(name.clone(), cwd.clone());
+            project.id = crate::memory::types::Project::canonicalize(&name);
+            self.projects = vec![project];
+        }
         self.project_cursor = 0;
+
+        if self.active_project.is_none() && !self.projects.is_empty() {
+            self.active_project = Some(self.projects[0].clone());
+            self.status = format!("Project: {}", self.projects[0].name);
+        }
         Ok(())
     }
 
     pub async fn load_observations(&mut self) -> anyhow::Result<()> {
-        if let Some(proj) = &self.active_project {
-            let mut all = self.structured().list_observations(&proj.id).await?;
-            all.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
-            let start = self.observation_page * self.page_size;
-            if start < all.len() {
-                self.observations =
-                    all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
+        if let Some(structured) = self.storage.as_structured() {
+            if let Some(proj) = &self.active_project {
+                let mut all = structured.list_observations(&proj.id).await?;
+                all.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
+                let start = self.observation_page * self.page_size;
+                if start < all.len() {
+                    self.observations =
+                        all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
+                } else {
+                    self.observations.clear();
+                }
             } else {
                 self.observations.clear();
             }
@@ -141,13 +156,17 @@ impl App {
     }
 
     pub async fn load_sessions(&mut self) -> anyhow::Result<()> {
-        if let Some(proj) = &self.active_project {
-            let mut all = self.structured().list_sessions(&proj.id).await?;
-            all.sort_by_key(|b| std::cmp::Reverse(b.started_at));
-            let start = self.session_page * self.page_size;
-            if start < all.len() {
-                self.sessions =
-                    all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
+        if let Some(structured) = self.storage.as_structured() {
+            if let Some(proj) = &self.active_project {
+                let mut all = structured.list_sessions(&proj.id).await?;
+                all.sort_by_key(|b| std::cmp::Reverse(b.started_at));
+                let start = self.session_page * self.page_size;
+                if start < all.len() {
+                    self.sessions =
+                        all[start..std::cmp::min(start + self.page_size, all.len())].to_vec();
+                } else {
+                    self.sessions.clear();
+                }
             } else {
                 self.sessions.clear();
             }
@@ -159,68 +178,139 @@ impl App {
     }
 
     pub async fn do_search(&mut self) -> anyhow::Result<()> {
-        if let Some(proj) = &self.active_project {
-            if !self.input_buffer.is_empty() {
-                self.search_results = self
-                    .structured()
-                    .search_observations(&proj.id, &self.input_buffer, self.page_size)
-                    .await?;
-            } else {
-                self.search_results.clear();
+        if !self.input_buffer.is_empty() {
+            if let Some(structured) = self.storage.as_structured() {
+                if let Some(proj) = &self.active_project {
+                    match structured.search_observations(&proj.id, &self.input_buffer, self.page_size).await {
+                        Ok(results) => {
+                            self.search_results = results;
+                            self.status = format!("Found {} results", self.search_results.len());
+                        }
+                        Err(e) => self.status = format!("Search error: {}", e),
+                    }
+                } else {
+                    self.search_results.clear();
+                    self.status = "No project selected".to_string();
+                }
+            } else if let Some(unstructured) = self.storage.as_unstructured() {
+                let ns1 = self.active_project.as_ref().map(|p| p.id.as_str());
+                let ns2 = Some("default");
+                
+                tracing::info!("TUI search unstructured: query='{}' namespaces=[{:?}, {:?}]", self.input_buffer, ns1, ns2);
+                
+                let mut all_results = Vec::new();
+                let mut has_error = false;
+                let mut last_error = String::new();
+
+                match unstructured.recall(&self.input_buffer, ns1).await {
+                    Ok(mut results) => all_results.append(&mut results),
+                    Err(e) => {
+                        tracing::error!("TUI search unstructured error (ns1): {:?}", e);
+                        has_error = true;
+                        last_error = e.to_string();
+                    }
+                }
+
+                if ns1 != ns2 {
+                    match unstructured.recall(&self.input_buffer, ns2).await {
+                        Ok(mut results) => all_results.append(&mut results),
+                        Err(e) => {
+                            tracing::error!("TUI search unstructured error (ns2): {:?}", e);
+                            has_error = true;
+                            last_error = e.to_string();
+                        }
+                    }
+                }
+                
+                all_results.sort();
+                all_results.dedup();
+
+                if all_results.is_empty() && has_error {
+                    self.status = format!("Memwal error: {}", last_error);
+                } else {
+                    tracing::info!("TUI search unstructured: found {} total unique results", all_results.len());
+                    self.search_results = all_results.into_iter().enumerate().map(|(i, text)| {
+                        use crate::memory::types::*;
+                        let obs = Observation::new(
+                            "memwal".to_string(),
+                            Scope::Global,
+                            MemoryType::Note,
+                            format!("Semantic Result {}", i + 1),
+                            text,
+                        );
+                        SearchResult {
+                            observation: obs,
+                            score: 1.0,
+                            matched_fields: vec!["semantic".to_string()],
+                        }
+                    }).collect();
+                    self.status = format!("Found {} results", self.search_results.len());
+                }
             }
+        } else {
+            self.search_results.clear();
         }
         self.search_cursor = 0;
         Ok(())
     }
 
     pub async fn load_observation_detail(&mut self, id: &ObservationId) -> anyhow::Result<()> {
-        self.detail_observation = self.structured().get_observation(id).await?;
+        if let Some(structured) = self.storage.as_structured() {
+            self.detail_observation = structured.get_observation(id).await?;
+        }
         Ok(())
     }
 
     pub async fn load_session_detail(&mut self, id: &SessionId) -> anyhow::Result<()> {
-        self.detail_session = self.structured().get_session(id).await?;
-        self.detail_session_observations = self.structured().get_observations_by_session(id).await?;
+        if let Some(structured) = self.storage.as_structured() {
+            self.detail_session = structured.get_session(id).await?;
+            self.detail_session_observations = structured.get_observations_by_session(id).await?;
+        }
         Ok(())
     }
 
     pub async fn soft_delete_selected(&mut self) -> anyhow::Result<()> {
-        if let Some(obs) = self.selected_observation() {
-            let id = obs.id.clone();
-            let title = obs.title.clone();
-            self.structured()
-                .delete_observation(&id, DeleteMode::Soft)
-                .await?;
-            self.status = format!("Soft-deleted: {}", title);
-            self.reload_current_list().await?;
+        if let Some(structured) = self.storage.as_structured() {
+            if let Some(obs) = self.selected_observation() {
+                let id = obs.id.clone();
+                let title = obs.title.clone();
+                structured
+                    .delete_observation(&id, DeleteMode::Soft)
+                    .await?;
+                self.status = format!("Soft-deleted: {}", title);
+                self.reload_current_list().await?;
+            }
         }
         Ok(())
     }
 
     pub async fn hard_delete_confirmed(&mut self, id: &ObservationId) -> anyhow::Result<()> {
-        let title = self
-            .structured()
-            .get_observation(id)
-            .await?
-            .map(|o| o.title.clone())
-            .unwrap_or_else(|| id.clone());
-        self.structured()
-            .delete_observation(id, DeleteMode::Hard)
-            .await?;
-        self.status = format!("Hard-deleted: {}", title);
-        self.confirm_action = None;
-        self.reload_current_list().await?;
+        if let Some(structured) = self.storage.as_structured() {
+            let title = structured
+                .get_observation(id)
+                .await?
+                .map(|o| o.title.clone())
+                .unwrap_or_else(|| id.clone());
+            structured
+                .delete_observation(id, DeleteMode::Hard)
+                .await?;
+            self.status = format!("Hard-deleted: {}", title);
+            self.confirm_action = None;
+            self.reload_current_list().await?;
+        }
         Ok(())
     }
 
     pub async fn mark_reviewed_selected(&mut self) -> anyhow::Result<()> {
-        if let Some(obs) = self.selected_observation() {
-            let mut obs = obs.clone();
-            obs.reviewed_at = Some(chrono::Utc::now());
-            obs.review_after = Some(chrono::Utc::now() + chrono::Duration::days(7));
-            self.structured().update_observation(&obs).await?;
-            self.status = format!("Marked reviewed: {}", obs.title);
-            self.reload_current_list().await?;
+        if let Some(structured) = self.storage.as_structured() {
+            if let Some(obs) = self.selected_observation() {
+                let mut obs = obs.clone();
+                obs.reviewed_at = Some(chrono::Utc::now());
+                obs.review_after = Some(chrono::Utc::now() + chrono::Duration::days(7));
+                structured.update_observation(&obs).await?;
+                self.status = format!("Marked reviewed: {}", obs.title);
+                self.reload_current_list().await?;
+            }
         }
         Ok(())
     }
@@ -306,7 +396,11 @@ impl App {
     pub async fn enter_observation_detail(&mut self) -> anyhow::Result<()> {
         if let Some(obs) = self.selected_observation() {
             let id = obs.id.clone();
-            self.load_observation_detail(&id).await?;
+            if self.storage.as_structured().is_some() {
+                self.load_observation_detail(&id).await?;
+            } else {
+                self.detail_observation = Some(obs.clone());
+            }
             self.detail = DetailView::ObservationDetail(id);
         }
         Ok(())

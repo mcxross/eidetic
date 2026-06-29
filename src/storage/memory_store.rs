@@ -150,14 +150,19 @@ impl MemoryStore {
             Ok(project)
         } else {
             // Unstructured mode (Memwal): Mock a project to satisfy the tools' expectations
-            let project = Project::new(
-                std::path::Path::new(&cwd)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string(),
-                cwd.clone(),
-            );
+            let name = std::path::Path::new(&cwd)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            
+            let mut name = Project::canonicalize(&name);
+            if name.is_empty() {
+                name = "default".to_string();
+            }
+
+            let mut project = Project::new(name.clone(), cwd.clone());
+            project.id = name; // Deterministic namespace!
             self.set_current_project(project.id.clone()).await;
             Ok(project)
         }
