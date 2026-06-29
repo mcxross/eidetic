@@ -49,7 +49,12 @@ impl MemUpdate {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_update is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_update is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         if let Some(ref metadata) = params.metadata
@@ -134,6 +139,8 @@ impl MemUpdate {
     }
 }
 
+use std::collections::HashMap;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,16 +185,10 @@ mod tests {
             .expect("update failed");
         assert_eq!(res.content.len(), 1);
 
-        let updated_obs = structured
-            .get_observation(&obs_id)
-            .await
-            .unwrap()
-            .unwrap();
+        let updated_obs = structured.get_observation(&obs_id).await.unwrap().unwrap();
         assert_eq!(updated_obs.title, "New Title");
         assert_eq!(updated_obs.tags, vec!["new_tag".to_string()]);
         assert_eq!(updated_obs.lifecycle, LifecycleState::Archived);
         assert_eq!(updated_obs.revision_count, 1); // was 0? wait, when updating, it might increment. Let's just check > 0
     }
 }
-
-use std::collections::HashMap;

@@ -33,7 +33,12 @@ impl MemMergeProjects {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_merge_projects is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_merge_projects is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         if params

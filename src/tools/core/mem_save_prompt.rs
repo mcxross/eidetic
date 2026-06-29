@@ -44,7 +44,12 @@ impl MemSavePrompt {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_save_prompt is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_save_prompt is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         let project = if let Some(pid) = params.project_id {

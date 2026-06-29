@@ -90,7 +90,7 @@ impl MemSave {
 
             let project = if let Some(pid) = &params.project_id {
                 structured
-                    .get_project(&pid)
+                    .get_project(pid)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?
                     .ok_or_else(|| {
@@ -153,7 +153,7 @@ impl MemSave {
                 content: params.content.clone(),
                 tags: params.tags.clone().unwrap_or_default(),
                 metadata: meta.unwrap_or_default(),
-                memory_type: params.memory_type.clone(),
+                memory_type: params.memory_type,
                 scope,
                 lifecycle: LifecycleState::Active,
                 topic_key: params.topic_key.clone(),
@@ -175,13 +175,13 @@ impl MemSave {
                 capture_prompt: params.capture_prompt.unwrap_or(true),
             };
 
-            if obs.capture_prompt {
-                if let Ok(recent) = structured.get_recent_observations(&project_id, 5).await {
-                    for r in recent.iter() {
-                        if r.capture_prompt && r.source_prompt.is_some() {
-                            obs.source_prompt = r.source_prompt.clone();
-                            break;
-                        }
+            if obs.capture_prompt
+                && let Ok(recent) = structured.get_recent_observations(&project_id, 5).await
+            {
+                for r in recent.iter() {
+                    if r.capture_prompt && r.source_prompt.is_some() {
+                        obs.source_prompt = r.source_prompt.clone();
+                        break;
                     }
                 }
             }
@@ -206,23 +206,31 @@ impl MemSave {
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
                 project.id
             };
-            
+
             let text_to_remember = format!(
                 "Title: {}\nType: {:?}\nTags: {:?}\n\n{}",
-                params.title, params.memory_type, params.tags.unwrap_or_default(), params.content
+                params.title,
+                params.memory_type,
+                params.tags.unwrap_or_default(),
+                params.content
             );
 
             let job_id = unstructured
                 .remember(&text_to_remember, Some(&namespace))
                 .await
-                .map_err(|e| McpError::internal_error(format!("Memwal remember failed: {}", e), None))?;
+                .map_err(|e| {
+                    McpError::internal_error(format!("Memwal remember failed: {}", e), None)
+                })?;
 
             Ok(CallToolResult::success(vec![Content::text(format!(
                 "Successfully sent observation to Memwal network. Job ID: `{}`",
                 job_id
             ))]))
         } else {
-            Err(McpError::internal_error("Storage backend has no known capabilities", None))
+            Err(McpError::internal_error(
+                "Storage backend has no known capabilities",
+                None,
+            ))
         }
     }
 }

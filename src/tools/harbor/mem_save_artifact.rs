@@ -133,18 +133,27 @@ impl MemSaveArtifact {
             if let Some(id_bytes) = &result.id_bytes {
                 seal_id_str = format!("\nSeal ID: {}", hex::encode(id_bytes));
             }
-            
+
             let text = format!(
                 "[ARTIFACT REFERENCE]\nFilename: {}\nHarbor File ID: {}\nEncrypted: {}{}",
                 params.0.filename, result.file_id, result.is_encrypted, seal_id_str
             );
-            
+
             let ns = store.get_current_project().await;
-            unstructured.remember(&text, ns.as_deref()).await.map_err(|e| {
-                McpError::internal_error(format!("Failed to remember artifact to Memwal: {}", e), None)
-            })?;
+            unstructured
+                .remember(&text, ns.as_deref())
+                .await
+                .map_err(|e| {
+                    McpError::internal_error(
+                        format!("Failed to remember artifact to Memwal: {}", e),
+                        None,
+                    )
+                })?;
         } else {
-            return Err(McpError::internal_error("Storage backend has no known capabilities", None));
+            return Err(McpError::internal_error(
+                "Storage backend has no known capabilities",
+                None,
+            ));
         }
 
         Ok(CallToolResult::success(vec![Content::text(format!(

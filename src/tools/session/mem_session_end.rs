@@ -44,7 +44,12 @@ impl MemSessionEnd {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("Sessions are not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "Sessions are not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         let mut session = structured

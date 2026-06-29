@@ -123,14 +123,14 @@ pub async fn setup_memwal() -> Result<()> {
         needs_save = true;
     }
 
-    if config.memwal_relayer_config_url.is_none() {
-        if let Some(relayer) = &config.memwal_server_url {
-            let config_url = format!("{}/config", relayer);
-            println!("Setting default Relayer Config URL: {}", config_url);
-            config.memwal_relayer_config_url = Some(config_url);
-            auth_config.relayer_config_url = config.memwal_relayer_config_url.clone();
-            needs_save = true;
-        }
+    if config.memwal_relayer_config_url.is_none()
+        && let Some(relayer) = &config.memwal_server_url
+    {
+        let config_url = format!("{}/config", relayer);
+        println!("Setting default Relayer Config URL: {}", config_url);
+        config.memwal_relayer_config_url = Some(config_url);
+        auth_config.relayer_config_url = config.memwal_relayer_config_url.clone();
+        needs_save = true;
     }
 
     if config.memwal_namespace.is_none() {
@@ -165,26 +165,24 @@ pub async fn setup_memwal() -> Result<()> {
 
     // Check if account has gas using Sui SDK before attempting to provision
     let mut has_gas = false;
-    if let Ok(snap) = auth_manager.config_snapshot().await {
-        if let Some(rpc_url) = snap.active_rpc.as_deref() {
-            use std::str::FromStr;
-            use sui_sdk::SuiClientBuilder;
-            use sui_sdk::types::base_types::SuiAddress;
+    if let Ok(snap) = auth_manager.config_snapshot().await
+        && let Some(rpc_url) = snap.active_rpc.as_deref()
+    {
+        use std::str::FromStr;
+        use sui_sdk::SuiClientBuilder;
+        use sui_sdk::types::base_types::SuiAddress;
 
-            if let Ok(parsed_addr) = SuiAddress::from_str(&address) {
-                if let Ok(sui_client) = SuiClientBuilder::default().build(rpc_url).await {
-                    if let Ok(balance) = sui_client
-                        .coin_read_api()
-                        .get_balance(parsed_addr, None)
-                        .await
-                    {
-                        // The balance is returned in MIST. Any non-zero amount means we might have enough,
-                        // or at least we are funded. If it's truly insufficient later, the loop handles it.
-                        if balance.total_balance > 0 {
-                            has_gas = true;
-                        }
-                    }
-                }
+        if let Ok(parsed_addr) = SuiAddress::from_str(&address)
+            && let Ok(sui_client) = SuiClientBuilder::default().build(rpc_url).await
+            && let Ok(balance) = sui_client
+                .coin_read_api()
+                .get_balance(parsed_addr, None)
+                .await
+        {
+            // The balance is returned in MIST. Any non-zero amount means we might have enough,
+            // or at least we are funded. If it's truly insufficient later, the loop handles it.
+            if balance.total_balance > 0 {
+                has_gas = true;
             }
         }
     }

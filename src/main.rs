@@ -251,14 +251,17 @@ fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::from_default_env().add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()))
+        .with(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing_subscriber::filter::LevelFilter::INFO.into()),
+        )
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(non_blocking)
-                .with_ansi(false)
+                .with_ansi(false),
         )
         .init();
-        
+
     guard
 }
 
@@ -392,7 +395,7 @@ async fn run_backup(mut config: config::EideticConfig) -> anyhow::Result<()> {
         .clone()
         .map(std::path::PathBuf::from)
         .unwrap_or_else(crate::storage::get_storage_path);
-        
+
     let db_path = if backend == "file" {
         storage_path.clone()
     } else {
@@ -479,7 +482,7 @@ async fn run_restore(config: config::EideticConfig, day: &str) -> anyhow::Result
         p.push("storage");
         p.to_string_lossy().into_owned()
     }));
-    
+
     let db_path = if backend == "file" {
         path.clone()
     } else {
@@ -489,11 +492,11 @@ async fn run_restore(config: config::EideticConfig, day: &str) -> anyhow::Result
     if backend == "file" {
         let temp_tar = path.with_extension("restore.tar.gz");
         tokio::fs::write(&temp_tar, &db_bytes).await?;
-        
+
         println!("Replacing file storage directory...");
         let _ = tokio::fs::remove_dir_all(&db_path).await;
         tokio::fs::create_dir_all(&db_path).await?;
-        
+
         let output = std::process::Command::new("tar")
             .arg("-xzf")
             .arg(&temp_tar)

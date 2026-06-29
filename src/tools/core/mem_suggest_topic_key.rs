@@ -39,7 +39,12 @@ impl MemSuggestTopicKey {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_suggest_topic_key is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_suggest_topic_key is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         let project = if let Some(pid) = params.project_id {
@@ -81,7 +86,11 @@ impl MemSuggestTopicKey {
         }
 
         similar.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let similar_topics: Vec<TopicKey> = similar.into_iter().take(5).map(|(t, _)| t.to_string()).collect();
+        let similar_topics: Vec<TopicKey> = similar
+            .into_iter()
+            .take(5)
+            .map(|(t, _)| t.to_string())
+            .collect();
 
         let confidence = if similar_topics.is_empty() { 0.8 } else { 0.6 };
 

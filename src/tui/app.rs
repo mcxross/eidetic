@@ -111,15 +111,20 @@ impl App {
         }
     }
 
-
-
     pub async fn load_projects(&mut self) -> anyhow::Result<()> {
         if let Some(structured) = self.storage.as_structured() {
             self.projects = structured.list_projects().await?;
             self.projects.sort_by(|a, b| a.name.cmp(&b.name));
         } else {
-            let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().to_string();
-            let name = std::path::Path::new(&cwd).file_name().unwrap_or_default().to_string_lossy().to_string();
+            let cwd = std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let name = std::path::Path::new(&cwd)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let mut project = crate::memory::types::Project::new(name.clone(), cwd.clone());
             project.id = crate::memory::types::Project::canonicalize(&name);
             self.projects = vec![project];
@@ -181,7 +186,10 @@ impl App {
         if !self.input_buffer.is_empty() {
             if let Some(structured) = self.storage.as_structured() {
                 if let Some(proj) = &self.active_project {
-                    match structured.search_observations(&proj.id, &self.input_buffer, self.page_size).await {
+                    match structured
+                        .search_observations(&proj.id, &self.input_buffer, self.page_size)
+                        .await
+                    {
                         Ok(results) => {
                             self.search_results = results;
                             self.status = format!("Found {} results", self.search_results.len());
@@ -195,9 +203,14 @@ impl App {
             } else if let Some(unstructured) = self.storage.as_unstructured() {
                 let ns1 = self.active_project.as_ref().map(|p| p.id.as_str());
                 let ns2 = Some("default");
-                
-                tracing::info!("TUI search unstructured: query='{}' namespaces=[{:?}, {:?}]", self.input_buffer, ns1, ns2);
-                
+
+                tracing::info!(
+                    "TUI search unstructured: query='{}' namespaces=[{:?}, {:?}]",
+                    self.input_buffer,
+                    ns1,
+                    ns2
+                );
+
                 let mut all_results = Vec::new();
                 let mut has_error = false;
                 let mut last_error = String::new();
@@ -221,29 +234,36 @@ impl App {
                         }
                     }
                 }
-                
+
                 all_results.sort();
                 all_results.dedup();
 
                 if all_results.is_empty() && has_error {
                     self.status = format!("Memwal error: {}", last_error);
                 } else {
-                    tracing::info!("TUI search unstructured: found {} total unique results", all_results.len());
-                    self.search_results = all_results.into_iter().enumerate().map(|(i, text)| {
-                        use crate::memory::types::*;
-                        let obs = Observation::new(
-                            "memwal".to_string(),
-                            Scope::Global,
-                            MemoryType::Note,
-                            format!("Semantic Result {}", i + 1),
-                            text,
-                        );
-                        SearchResult {
-                            observation: obs,
-                            score: 1.0,
-                            matched_fields: vec!["semantic".to_string()],
-                        }
-                    }).collect();
+                    tracing::info!(
+                        "TUI search unstructured: found {} total unique results",
+                        all_results.len()
+                    );
+                    self.search_results = all_results
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, text)| {
+                            use crate::memory::types::*;
+                            let obs = Observation::new(
+                                "memwal".to_string(),
+                                Scope::Global,
+                                MemoryType::Note,
+                                format!("Semantic Result {}", i + 1),
+                                text,
+                            );
+                            SearchResult {
+                                observation: obs,
+                                score: 1.0,
+                                matched_fields: vec!["semantic".to_string()],
+                            }
+                        })
+                        .collect();
                     self.status = format!("Found {} results", self.search_results.len());
                 }
             }
@@ -270,16 +290,14 @@ impl App {
     }
 
     pub async fn soft_delete_selected(&mut self) -> anyhow::Result<()> {
-        if let Some(structured) = self.storage.as_structured() {
-            if let Some(obs) = self.selected_observation() {
-                let id = obs.id.clone();
-                let title = obs.title.clone();
-                structured
-                    .delete_observation(&id, DeleteMode::Soft)
-                    .await?;
-                self.status = format!("Soft-deleted: {}", title);
-                self.reload_current_list().await?;
-            }
+        if let Some(structured) = self.storage.as_structured()
+            && let Some(obs) = self.selected_observation()
+        {
+            let id = obs.id.clone();
+            let title = obs.title.clone();
+            structured.delete_observation(&id, DeleteMode::Soft).await?;
+            self.status = format!("Soft-deleted: {}", title);
+            self.reload_current_list().await?;
         }
         Ok(())
     }
@@ -291,9 +309,7 @@ impl App {
                 .await?
                 .map(|o| o.title.clone())
                 .unwrap_or_else(|| id.clone());
-            structured
-                .delete_observation(id, DeleteMode::Hard)
-                .await?;
+            structured.delete_observation(id, DeleteMode::Hard).await?;
             self.status = format!("Hard-deleted: {}", title);
             self.confirm_action = None;
             self.reload_current_list().await?;
@@ -302,15 +318,15 @@ impl App {
     }
 
     pub async fn mark_reviewed_selected(&mut self) -> anyhow::Result<()> {
-        if let Some(structured) = self.storage.as_structured() {
-            if let Some(obs) = self.selected_observation() {
-                let mut obs = obs.clone();
-                obs.reviewed_at = Some(chrono::Utc::now());
-                obs.review_after = Some(chrono::Utc::now() + chrono::Duration::days(7));
-                structured.update_observation(&obs).await?;
-                self.status = format!("Marked reviewed: {}", obs.title);
-                self.reload_current_list().await?;
-            }
+        if let Some(structured) = self.storage.as_structured()
+            && let Some(obs) = self.selected_observation()
+        {
+            let mut obs = obs.clone();
+            obs.reviewed_at = Some(chrono::Utc::now());
+            obs.review_after = Some(chrono::Utc::now() + chrono::Duration::days(7));
+            structured.update_observation(&obs).await?;
+            self.status = format!("Marked reviewed: {}", obs.title);
+            self.reload_current_list().await?;
         }
         Ok(())
     }

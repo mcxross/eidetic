@@ -31,7 +31,12 @@ impl MemStats {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_stats is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_stats is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         let project = if let Some(pid) = &params.project_id {
@@ -53,7 +58,9 @@ impl MemStats {
                     .get_project(&project_id)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?
-                    .ok_or_else(|| McpError::internal_error("Failed to load detected project", None))?
+                    .ok_or_else(|| {
+                        McpError::internal_error("Failed to load detected project", None)
+                    })?
             } else {
                 // If no project exists for cwd, get/create default project
                 self.store

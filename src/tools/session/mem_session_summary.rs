@@ -43,7 +43,12 @@ impl MemSessionSummary {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("Sessions are not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "Sessions are not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         if params.goal.trim().is_empty() {

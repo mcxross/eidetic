@@ -41,7 +41,7 @@ impl MemSearch {
         if let Some(structured) = storage.as_structured() {
             let project = if let Some(pid) = &params.project_id {
                 structured
-                    .get_project(&pid)
+                    .get_project(pid)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?
                     .ok_or_else(|| {
@@ -108,12 +108,14 @@ impl MemSearch {
                 project.id
             };
 
-            let limit = params.limit.unwrap_or(20).min(500);
-            
+            let _limit = params.limit.unwrap_or(20).min(500);
+
             let results = unstructured
                 .recall(&params.query, Some(&namespace))
                 .await
-                .map_err(|e| McpError::internal_error(format!("Memwal recall failed: {}", e), None))?;
+                .map_err(|e| {
+                    McpError::internal_error(format!("Memwal recall failed: {}", e), None)
+                })?;
 
             let output = if results.is_empty() {
                 "No results found".to_string()
@@ -135,7 +137,10 @@ impl MemSearch {
                 output
             ))]))
         } else {
-            Err(McpError::internal_error("Storage backend has no known capabilities", None))
+            Err(McpError::internal_error(
+                "Storage backend has no known capabilities",
+                None,
+            ))
         }
     }
 }

@@ -78,8 +78,12 @@ impl HarborBackupManager {
     }
 
     pub async fn create_snapshot(db_path: &Path, backend: &str) -> Result<PathBuf> {
-        let snapshot_path = db_path.with_extension(if backend == "file" { "backup.tar.gz" } else { "backup.tmp" });
-        
+        let snapshot_path = db_path.with_extension(if backend == "file" {
+            "backup.tar.gz"
+        } else {
+            "backup.tmp"
+        });
+
         if backend == "file" {
             let output = std::process::Command::new("tar")
                 .arg("-czf")
@@ -89,7 +93,7 @@ impl HarborBackupManager {
                 .arg(db_path.file_name().unwrap())
                 .output()
                 .context("Failed to execute tar command")?;
-                
+
             if !output.status.success() {
                 anyhow::bail!("Tar command failed: {:?}", output);
             }

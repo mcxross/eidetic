@@ -1,7 +1,6 @@
 use crate::config::EideticConfig;
 use crate::harbor::HarborCredentials;
 use crate::harbor::artifacts::ArtifactManager;
-use crate::memory::types::*;
 use crate::storage::MemoryStore;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::ErrorData as McpError;
@@ -52,7 +51,7 @@ impl MemGetArtifact {
 
         let file_id = &params.0.harbor_file_id;
         let is_encrypted = params.0.is_encrypted.unwrap_or(false);
-        
+
         let id_bytes = if let Some(hex_str) = params.0.seal_id_bytes {
             Some(hex::decode(&hex_str).map_err(|e| {
                 McpError::internal_error(format!("Failed to decode seal_id_bytes hex: {}", e), None)

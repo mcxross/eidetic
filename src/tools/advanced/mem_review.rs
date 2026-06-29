@@ -40,7 +40,12 @@ impl MemReview {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_review is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_review is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         let project = if let Some(pid) = params.project_id {
@@ -74,7 +79,12 @@ impl MemReview {
                 let storage = self.store.storage();
                 let structured = match storage.as_structured() {
                     Some(s) => s,
-                    None => return Err(McpError::internal_error("mem_review is not supported on unstructured storage backends like memwal", None)),
+                    None => {
+                        return Err(McpError::internal_error(
+                            "mem_review is not supported on unstructured storage backends like memwal",
+                            None,
+                        ));
+                    }
                 };
 
                 let obs_id = params.observation_id.ok_or_else(|| {

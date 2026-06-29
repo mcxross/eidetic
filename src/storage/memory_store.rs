@@ -94,9 +94,7 @@ impl MemoryStore {
 
         let mut current = Some(path);
         while let Some(dir) = current {
-            if let Ok(Some(project)) = structured
-                .get_project_by_path(&dir.to_string_lossy())
-                .await
+            if let Ok(Some(project)) = structured.get_project_by_path(&dir.to_string_lossy()).await
             {
                 return Ok(Some(project.id));
             }
@@ -128,12 +126,12 @@ impl MemoryStore {
         });
 
         let project_id_opt = self.detect_project(Some(cwd.clone())).await?;
-        
+
         if let Some(structured) = self.storage.as_structured() {
-            if let Some(project_id) = project_id_opt {
-                if let Some(project) = structured.get_project(&project_id).await? {
-                    return Ok(project);
-                }
+            if let Some(project_id) = project_id_opt
+                && let Some(project) = structured.get_project(&project_id).await?
+            {
+                return Ok(project);
             }
 
             let project = Project::new(
@@ -155,7 +153,7 @@ impl MemoryStore {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            
+
             let mut name = Project::canonicalize(&name);
             if name.is_empty() {
                 name = "default".to_string();

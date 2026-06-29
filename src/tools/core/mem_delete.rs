@@ -34,7 +34,12 @@ impl MemDelete {
         let storage = self.store.storage();
         let structured = match storage.as_structured() {
             Some(s) => s,
-            None => return Err(McpError::internal_error("mem_delete is not supported on unstructured storage backends like memwal", None)),
+            None => {
+                return Err(McpError::internal_error(
+                    "mem_delete is not supported on unstructured storage backends like memwal",
+                    None,
+                ));
+            }
         };
 
         let obs = structured
@@ -107,11 +112,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify it was soft-deleted
-        let deleted_obs = structured
-            .get_observation(&obs_id)
-            .await
-            .unwrap()
-            .unwrap();
+        let deleted_obs = structured.get_observation(&obs_id).await.unwrap().unwrap();
         assert_eq!(deleted_obs.lifecycle, LifecycleState::Deleted);
     }
 }
