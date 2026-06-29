@@ -8,6 +8,7 @@ pub enum Tab {
     Observations,
     Sessions,
     Search,
+    Config,
 }
 
 impl Tab {
@@ -16,7 +17,8 @@ impl Tab {
             Tab::Projects => Tab::Observations,
             Tab::Observations => Tab::Sessions,
             Tab::Sessions => Tab::Search,
-            Tab::Search => Tab::Projects,
+            Tab::Search => Tab::Config,
+            Tab::Config => Tab::Projects,
         }
     }
 
@@ -26,6 +28,7 @@ impl Tab {
             Tab::Observations => "Observations",
             Tab::Sessions => "Sessions",
             Tab::Search => "Search",
+            Tab::Config => "Config",
         }
     }
 }
@@ -39,6 +42,7 @@ pub enum DetailView {
 
 pub struct App {
     pub storage: Arc<dyn Storage>,
+    pub config: crate::config::EideticConfig,
     pub running: bool,
     pub input_mode: bool,
 
@@ -78,9 +82,10 @@ pub enum ConfirmAction {
 }
 
 impl App {
-    pub fn new(storage: Arc<dyn Storage>) -> Self {
+    pub fn new(storage: Arc<dyn Storage>, config: crate::config::EideticConfig) -> Self {
         Self {
             storage,
+            config,
             running: true,
             input_mode: false,
             tab: Tab::Projects,
@@ -223,6 +228,7 @@ impl App {
                 .search_results
                 .get(self.search_cursor)
                 .map(|r| &r.observation),
+            Tab::Config => None,
             _ => None,
         }
     }
@@ -233,6 +239,7 @@ impl App {
             Tab::Observations => self.observation_cursor,
             Tab::Sessions => self.session_cursor,
             Tab::Search => self.search_cursor,
+            Tab::Config => 0,
         }
     }
 
@@ -242,6 +249,7 @@ impl App {
             Tab::Observations => self.observations.len(),
             Tab::Sessions => self.sessions.len(),
             Tab::Search => self.search_results.len(),
+            Tab::Config => 0,
         }
     }
 
@@ -253,6 +261,7 @@ impl App {
             }
             Tab::Sessions => self.session_cursor = self.session_cursor.saturating_sub(1),
             Tab::Search => self.search_cursor = self.search_cursor.saturating_sub(1),
+            Tab::Config => {}
         }
     }
 
@@ -263,6 +272,7 @@ impl App {
             Tab::Observations => self.observation_cursor = (self.observation_cursor + 1).min(max),
             Tab::Sessions => self.session_cursor = (self.session_cursor + 1).min(max),
             Tab::Search => self.search_cursor = (self.search_cursor + 1).min(max),
+            Tab::Config => {}
         }
     }
 
@@ -272,6 +282,7 @@ impl App {
             Tab::Observations => self.load_observations().await?,
             Tab::Sessions => self.load_sessions().await?,
             Tab::Search => self.do_search().await?,
+            Tab::Config => {}
         }
         Ok(())
     }

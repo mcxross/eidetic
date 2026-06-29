@@ -35,19 +35,25 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let titles: Vec<Line> = [Tab::Projects, Tab::Observations, Tab::Sessions, Tab::Search]
-        .iter()
-        .map(|t| {
-            let style = if *t == app.tab {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            };
-            Line::from(Span::styled(t.label(), style))
-        })
-        .collect();
+    let titles: Vec<Line> = [
+        Tab::Projects,
+        Tab::Observations,
+        Tab::Sessions,
+        Tab::Search,
+        Tab::Config,
+    ]
+    .iter()
+    .map(|t| {
+        let style = if *t == app.tab {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+        Line::from(Span::styled(t.label(), style))
+    })
+    .collect();
 
     let project_name = app
         .active_project
@@ -66,6 +72,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             Tab::Observations => 1,
             Tab::Sessions => 2,
             Tab::Search => 3,
+            Tab::Config => 4,
         })
         .highlight_style(Style::default().fg(Color::Cyan));
 
@@ -78,6 +85,7 @@ fn draw_tab_content(f: &mut Frame, app: &App, area: Rect) {
         Tab::Observations => draw_observations(f, app, area),
         Tab::Sessions => draw_sessions(f, app, area),
         Tab::Search => draw_search(f, app, area),
+        Tab::Config => draw_config(f, app, area),
     }
 }
 
@@ -545,4 +553,165 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn draw_config(f: &mut Frame, app: &App, area: Rect) {
+    let header = Row::new(vec!["Key", "Value"]).style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
+
+    let mut rows: Vec<Row> = Vec::new();
+
+    let storage_backend = app
+        .config
+        .storage_backend
+        .clone()
+        .unwrap_or_else(|| String::from("(default)"));
+    rows.push(Row::new(vec![
+        Cell::from("storage_backend"),
+        Cell::from(storage_backend),
+    ]));
+
+    let storage_path = app
+        .config
+        .storage_path
+        .clone()
+        .unwrap_or_else(|| String::from("(default)"));
+    rows.push(Row::new(vec![
+        Cell::from("storage_path"),
+        Cell::from(storage_path),
+    ]));
+
+    let sui_config_dir = app
+        .config
+        .sui_config_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| String::from("(default)"));
+    rows.push(Row::new(vec![
+        Cell::from("sui_config_dir"),
+        Cell::from(sui_config_dir),
+    ]));
+
+    let memwal_account_id = app
+        .config
+        .memwal_account_id
+        .clone()
+        .unwrap_or_else(|| String::from("(none)"));
+    rows.push(Row::new(vec![
+        Cell::from("memwal_account_id"),
+        Cell::from(memwal_account_id),
+    ]));
+
+    let memwal_registry_id = app
+        .config
+        .memwal_registry_id
+        .clone()
+        .unwrap_or_else(|| String::from("(none)"));
+    rows.push(Row::new(vec![
+        Cell::from("memwal_registry_id"),
+        Cell::from(memwal_registry_id),
+    ]));
+
+    let memwal_server_url = app
+        .config
+        .memwal_server_url
+        .clone()
+        .unwrap_or_else(|| String::from("(none)"));
+    rows.push(Row::new(vec![
+        Cell::from("memwal_server_url"),
+        Cell::from(memwal_server_url),
+    ]));
+
+    let memwal_relayer_config_url = app
+        .config
+        .memwal_relayer_config_url
+        .clone()
+        .unwrap_or_else(|| String::from("(none)"));
+    rows.push(Row::new(vec![
+        Cell::from("memwal_relayer_config_url"),
+        Cell::from(memwal_relayer_config_url),
+    ]));
+
+    let memwal_namespace = app
+        .config
+        .memwal_namespace
+        .clone()
+        .unwrap_or_else(|| String::from("(none)"));
+    rows.push(Row::new(vec![
+        Cell::from("memwal_namespace"),
+        Cell::from(memwal_namespace),
+    ]));
+
+    let memwal_delegate_label = app
+        .config
+        .memwal_delegate_label
+        .clone()
+        .unwrap_or_else(|| String::from("(none)"));
+    rows.push(Row::new(vec![
+        Cell::from("memwal_delegate_label"),
+        Cell::from(memwal_delegate_label),
+    ]));
+
+    if let Some(ref pk) = app.config.private_key {
+        let masked = if pk.len() > 10 {
+            format!("{}...{}", &pk[0..6], &pk[pk.len() - 4..])
+        } else {
+            "****".to_string()
+        };
+        rows.push(Row::new(vec![
+            Cell::from("private_key"),
+            Cell::from(masked),
+        ]));
+    } else {
+        rows.push(Row::new(vec![
+            Cell::from("private_key"),
+            Cell::from("(none)"),
+        ]));
+    }
+
+    if let Some(ref harbor) = app.config.harbor {
+        let bucket_id = harbor
+            .bucket_id
+            .clone()
+            .unwrap_or_else(|| String::from("(none)"));
+        rows.push(Row::new(vec![
+            Cell::from("harbor.bucket_id"),
+            Cell::from(bucket_id),
+        ]));
+
+        let seal_policy_id = harbor
+            .seal_policy_id
+            .clone()
+            .unwrap_or_else(|| String::from("(none)"));
+        rows.push(Row::new(vec![
+            Cell::from("harbor.seal_policy_id"),
+            Cell::from(seal_policy_id),
+        ]));
+
+        let last_backup = harbor
+            .last_backup_at
+            .clone()
+            .unwrap_or_else(|| String::from("(never)"));
+        rows.push(Row::new(vec![
+            Cell::from("harbor.last_backup_at"),
+            Cell::from(last_backup),
+        ]));
+    }
+
+    let table = Table::new(
+        rows,
+        [Constraint::Percentage(30), Constraint::Percentage(70)],
+    )
+    .header(header)
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Eidetic Configuration "),
+    )
+    .row_highlight_style(Style::default().bg(Color::Cyan).fg(Color::Black));
+
+    f.render_widget(table, area);
 }

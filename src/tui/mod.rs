@@ -16,14 +16,17 @@ use crate::storage::Storage;
 use app::{App, ConfirmAction, DetailView, Tab};
 use events::{Action, AppEvent, map_key, spawn_event_loop};
 
-pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
+pub async fn run(
+    storage: Arc<dyn Storage>,
+    config: crate::config::EideticConfig,
+) -> anyhow::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(storage);
+    let mut app = App::new(storage, config);
 
     app.load_projects().await?;
 
@@ -119,6 +122,7 @@ pub async fn run(storage: Arc<dyn Storage>) -> anyhow::Result<()> {
                                     Tab::Search => {
                                         let _ = app.enter_observation_detail().await;
                                     }
+                                    Tab::Config => {}
                                 }
                             }
                         }

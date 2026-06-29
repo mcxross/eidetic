@@ -166,7 +166,7 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        Commands::Tui => run_tui(backend, storage_path, auth_config).await,
+        Commands::Tui => run_tui(backend, storage_path, auth_config, config).await,
         Commands::Setup { agent } => setup::run(&agent).await,
         Commands::Update => update::update().await,
         Commands::Info => run_info(config).await,
@@ -294,10 +294,11 @@ async fn run_tui(
     backend: String,
     path: Option<String>,
     auth_config: crate::auth::MemwalAuthConfig,
+    config: crate::config::EideticConfig,
 ) -> anyhow::Result<()> {
     let store = crate::storage::MemoryStore::new(backend, path, auth_config).await?;
     let storage: Arc<dyn crate::storage::Storage> = store.storage();
-    crate::tui::run(storage).await
+    crate::tui::run(storage, config).await
 }
 
 async fn run_backup(mut config: config::EideticConfig) -> anyhow::Result<()> {
