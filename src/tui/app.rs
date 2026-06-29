@@ -450,10 +450,11 @@ impl App {
                         file_id = rest.to_string();
                     } else if let Some(rest) = line.strip_prefix("Encrypted: ") {
                         encrypted = rest == "true";
-                    } else if let Some(rest) = line.strip_prefix("Seal ID: ") {
-                        if let Ok(bytes) = hex::decode(rest.trim()) {
-                            seal_id = Some(bytes);
-                        }
+                    } else if let Some(bytes) = line
+                        .strip_prefix("Seal ID: ")
+                        .and_then(|r| hex::decode(r.trim()).ok())
+                    {
+                        seal_id = Some(bytes);
                     }
                 }
 
@@ -502,7 +503,8 @@ impl App {
                 }
             };
 
-            let manager = crate::harbor::artifacts::ArtifactManager::new(&credentials, harbor_config, auth);
+            let manager =
+                crate::harbor::artifacts::ArtifactManager::new(&credentials, harbor_config, auth);
 
             let tmp_dir = std::env::temp_dir().join("eidetic_artifacts");
             if let Err(e) = tokio::fs::create_dir_all(&tmp_dir).await {
@@ -512,7 +514,10 @@ impl App {
 
             let mut opened = 0;
             for (filename, file_id, encrypted, seal_id) in artifacts {
-                match manager.download_artifact(&file_id, encrypted, seal_id).await {
+                match manager
+                    .download_artifact(&file_id, encrypted, seal_id)
+                    .await
+                {
                     Ok(bytes) => {
                         let path = tmp_dir.join(&filename);
                         if let Err(e) = tokio::fs::write(&path, bytes).await {
@@ -525,9 +530,14 @@ impl App {
                         } else if cfg!(target_os = "linux") {
                             std::process::Command::new("xdg-open").arg(&path).spawn()
                         } else if cfg!(target_os = "windows") {
-                            std::process::Command::new("cmd").args(["/C", "start", ""]).arg(&path).spawn()
+                            std::process::Command::new("cmd")
+                                .args(["/C", "start", ""])
+                                .arg(&path)
+                                .spawn()
                         } else {
-                            Err(std::io::Error::new(std::io::ErrorKind::Other, "Unsupported OS for open"))
+                            Err(std::io::Error::other(
+                                "Unsupported OS for open",
+                            ))
                         };
 
                         if let Err(e) = res {

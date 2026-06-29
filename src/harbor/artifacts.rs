@@ -30,7 +30,9 @@ impl ArtifactManager {
         auth: Arc<AuthManager>,
     ) -> Self {
         if config.seal_package_id.is_none() {
-            config.seal_package_id = Some("0x8b2429358e9b0f005b69fe8ad3cbd1268ad87f35047a21612e082c64824faf8d".to_string());
+            config.seal_package_id = Some(
+                "0x8b2429358e9b0f005b69fe8ad3cbd1268ad87f35047a21612e082c64824faf8d".to_string(),
+            );
         }
         if config.seal_key_server_ids.is_none() {
             config.seal_key_server_ids = Some(vec![

@@ -72,11 +72,7 @@ impl MemSaveArtifact {
         };
 
         let result = artifact_manager
-            .upload_artifact(
-                &params.0.filename,
-                &content,
-                params.0.encrypt,
-            )
+            .upload_artifact(&params.0.filename, &content, params.0.encrypt)
             .await
             .map_err(|e| {
                 McpError::internal_error(format!("Failed to upload artifact: {}", e), None)

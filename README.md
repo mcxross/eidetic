@@ -27,7 +27,7 @@ Agents can automatically store, recall, deduplicate, and review project knowledg
 ---
 
 ![Eidetic TUI](assets/eidetic-artifact.png)
-*Eidetic stores and recalls model generated artifacts (like screenshots) that you can view in your system's default viewer.*
+*Eidetic stores and recalls model generated artifacts (like images) that you can view in your system's default viewer.*
 
 ## Installation
 
