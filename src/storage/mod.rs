@@ -4,14 +4,37 @@ use std::path::PathBuf;
 
 pub mod file_storage;
 pub mod memory_store;
+pub mod memwal_storage;
 pub mod sqlite_storage;
 
 pub use file_storage::FileStorage;
 pub use memory_store::MemoryStore;
+pub use memwal_storage::MemwalStorage;
 pub use sqlite_storage::SqliteStorage;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StorageCapabilities {
+    Structured,
+    Unstructured,
+}
 
 #[async_trait]
 pub trait Storage: Send + Sync {
+    fn capabilities(&self) -> StorageCapabilities;
+
+    fn as_structured(&self) -> Option<&dyn StructuredStorage> {
+        None
+    }
+
+    fn as_unstructured(&self) -> Option<&dyn UnstructuredStorage> {
+        None
+    }
+
+    async fn health_check(&self) -> anyhow::Result<StoreHealth>;
+}
+
+#[async_trait]
+pub trait StructuredStorage: Storage + Send + Sync {
     async fn save_observation(&self, obs: &Observation) -> anyhow::Result<()>;
     async fn get_observation(&self, id: &ObservationId) -> anyhow::Result<Option<Observation>>;
     async fn update_observation(&self, obs: &Observation) -> anyhow::Result<()>;
@@ -69,8 +92,12 @@ pub trait Storage: Send + Sync {
     ) -> anyhow::Result<Vec<SemanticRelation>>;
 
     async fn get_stats(&self, project_id: &ProjectId) -> anyhow::Result<MemoryStats>;
+}
 
-    async fn health_check(&self) -> anyhow::Result<StoreHealth>;
+#[async_trait]
+pub trait UnstructuredStorage: Storage + Send + Sync {
+    async fn remember(&self, text: &str, namespace: Option<&str>) -> anyhow::Result<String>;
+    async fn recall(&self, query: &str, namespace: Option<&str>) -> anyhow::Result<Vec<String>>;
 }
 
 pub fn get_storage_path() -> PathBuf {

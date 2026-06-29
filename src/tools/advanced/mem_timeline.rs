@@ -30,9 +30,13 @@ impl MemTimeline {
         &self,
         Parameters(params): Parameters<MemTimelineParams>,
     ) -> Result<CallToolResult, McpError> {
-        let obs = self
-            .store
-            .storage()
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_timeline is not supported on unstructured storage backends like memwal", None)),
+        };
+
+        let obs = structured
             .get_observation(&params.observation_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -46,9 +50,7 @@ impl MemTimeline {
         let project_id = obs.project_id.clone();
 
         let limit = params.context_limit.unwrap_or(5).min(50);
-        let mut all_obs = self
-            .store
-            .storage()
+        let mut all_obs = structured
             .list_observations(&project_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

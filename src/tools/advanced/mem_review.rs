@@ -37,9 +37,14 @@ impl MemReview {
         &self,
         Parameters(params): Parameters<MemReviewParams>,
     ) -> Result<CallToolResult, McpError> {
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_review is not supported on unstructured storage backends like memwal", None)),
+        };
+
         let project = if let Some(pid) = params.project_id {
-            self.store
-                .storage()
+            structured
                 .get_project(&pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -56,9 +61,7 @@ impl MemReview {
         let action = params.action.trim().to_lowercase();
         match action.as_str() {
             "list" => {
-                let stale_reviews = self
-                    .store
-                    .storage()
+                let stale_reviews = structured
                     .get_stale_reviews(&project.id)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -68,6 +71,12 @@ impl MemReview {
                 Ok(CallToolResult::success(vec![Content::text(result_json)]))
             }
             "mark_reviewed" => {
+                let storage = self.store.storage();
+                let structured = match storage.as_structured() {
+                    Some(s) => s,
+                    None => return Err(McpError::internal_error("mem_review is not supported on unstructured storage backends like memwal", None)),
+                };
+
                 let obs_id = params.observation_id.ok_or_else(|| {
                     McpError::invalid_params(
                         "observation_id is required for action 'mark_reviewed'",
@@ -75,17 +84,14 @@ impl MemReview {
                     )
                 })?;
 
-                if let Some(mut obs) = self
-                    .store
-                    .storage()
+                if let Some(mut obs) = structured
                     .get_observation(&obs_id)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?
                 {
                     obs.reviewed_at = Some(Utc::now());
                     obs.review_after = Some(Utc::now() + chrono::Duration::days(7));
-                    self.store
-                        .storage()
+                    structured
                         .update_observation(&obs)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?;

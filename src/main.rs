@@ -366,22 +366,28 @@ async fn run_backup(mut config: config::EideticConfig) -> anyhow::Result<()> {
 
     let manager = crate::harbor::HarborBackupManager::new(&credentials, bucket_id);
 
+    let backend = config.storage_backend.as_deref().unwrap_or("memwal");
     let storage_path = config
         .storage_path
         .clone()
         .map(std::path::PathBuf::from)
         .unwrap_or_else(crate::storage::get_storage_path);
-    let db_path = storage_path.join("eidetic.db");
+        
+    let db_path = if backend == "file" {
+        storage_path.clone()
+    } else {
+        storage_path.join("eidetic.db")
+    };
 
     if !db_path.exists() {
         anyhow::bail!(
-            "No database found at {}. Nothing to back up.",
+            "No storage found at {}. Nothing to back up.",
             db_path.display()
         );
     }
 
     println!("\nCreating backup...");
-    let file_name = manager.backup(&db_path).await?;
+    let file_name = manager.backup(&db_path, backend).await?;
     println!("✅ Backup uploaded as '{}'", file_name);
 
     // Update last_backup_at
@@ -446,44 +452,72 @@ async fn run_restore(config: config::EideticConfig, day: &str) -> anyhow::Result
     println!("\nDownloading and verifying...");
     let db_bytes = manager.download_backup(&backup.id).await?;
 
-    let storage_path = config
-        .storage_path
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(crate::storage::get_storage_path);
-    let db_path = storage_path.join("eidetic.db");
+    let backend = config.storage_backend.as_deref().unwrap_or("memwal");
+    let path = std::path::PathBuf::from(config.storage_path.unwrap_or_else(|| {
+        let mut p = dirs::home_dir().unwrap();
+        p.push(".eidetic");
+        p.push("storage");
+        p.to_string_lossy().into_owned()
+    }));
+    
+    let db_path = if backend == "file" {
+        path.clone()
+    } else {
+        path.join("eidetic.db")
+    };
 
-    // Write to temp file first
-    let temp_path = db_path.with_extension("restore.tmp");
-    tokio::fs::write(&temp_path, &db_bytes).await?;
+    if backend == "file" {
+        let temp_tar = path.with_extension("restore.tar.gz");
+        tokio::fs::write(&temp_tar, &db_bytes).await?;
+        
+        println!("Replacing file storage directory...");
+        let _ = tokio::fs::remove_dir_all(&db_path).await;
+        tokio::fs::create_dir_all(&db_path).await?;
+        
+        let output = std::process::Command::new("tar")
+            .arg("-xzf")
+            .arg(&temp_tar)
+            .arg("-C")
+            .arg(db_path.parent().unwrap())
+            .output()?;
+        if !output.status.success() {
+            anyhow::bail!("Failed to extract tarball");
+        }
+        let _ = tokio::fs::remove_file(&temp_tar).await;
+    } else {
+        // Write to temp file first
+        let temp_path = db_path.with_extension("restore.tmp");
+        tokio::fs::write(&temp_path, &db_bytes).await?;
 
-    // Run integrity check
-    println!("Running integrity check...");
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect_with(
-            sqlx::sqlite::SqliteConnectOptions::new()
-                .filename(&temp_path)
-                .read_only(true),
-        )
-        .await?;
+        // Run integrity check
+        println!("Running integrity check...");
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                sqlx::sqlite::SqliteConnectOptions::new()
+                    .filename(&temp_path)
+                    .read_only(true),
+            )
+            .await?;
 
-    let result: (String,) = sqlx::query_as("PRAGMA integrity_check")
-        .fetch_one(&pool)
-        .await?;
-    pool.close().await;
+        let result: (String,) = sqlx::query_as("PRAGMA integrity_check")
+            .fetch_one(&pool)
+            .await?;
+        pool.close().await;
 
-    if result.0 != "ok" {
-        let _ = tokio::fs::remove_file(&temp_path).await;
-        anyhow::bail!("Integrity check failed: {}", result.0);
+        if result.0 != "ok" {
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            anyhow::bail!("Integrity check failed: {}", result.0);
+        }
+
+        // Overwrite
+        println!("Replacing database...");
+        let wal_path = db_path.with_extension("db-wal");
+        let shm_path = db_path.with_extension("db-shm");
+        let _ = tokio::fs::remove_file(&wal_path).await;
+        let _ = tokio::fs::remove_file(&shm_path).await;
+        tokio::fs::rename(&temp_path, &db_path).await?;
     }
-
-    // Overwrite
-    println!("Replacing database...");
-    let wal_path = db_path.with_extension("db-wal");
-    let shm_path = db_path.with_extension("db-shm");
-    let _ = tokio::fs::remove_file(&wal_path).await;
-    let _ = tokio::fs::remove_file(&shm_path).await;
-    tokio::fs::rename(&temp_path, &db_path).await?;
 
     println!("✅ Database restored successfully from '{}' backup.", day);
     println!("   Restart the Eidetic server to use the restored data.");

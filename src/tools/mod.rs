@@ -1,5 +1,6 @@
 pub mod advanced;
 pub mod core;
+pub mod harbor;
 pub mod memwal;
 pub mod project;
 pub mod session;

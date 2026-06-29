@@ -35,9 +35,14 @@ impl MemCapturePassive {
             return Err(McpError::invalid_params("text must not be empty", None));
         }
 
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_capture_passive is not supported on unstructured storage backends like memwal", None)),
+        };
+
         let project = if let Some(pid) = params.project_id {
-            self.store
-                .storage()
+            structured
                 .get_project(&pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -68,8 +73,13 @@ impl MemCapturePassive {
             params.text,
         );
 
-        self.store
-            .storage()
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_capture_passive is not supported on unstructured storage backends like memwal", None)),
+        };
+
+        structured
             .save_observation(&obs)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

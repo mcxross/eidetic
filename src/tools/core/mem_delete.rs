@@ -31,9 +31,13 @@ impl MemDelete {
         &self,
         Parameters(params): Parameters<MemDeleteParams>,
     ) -> Result<CallToolResult, McpError> {
-        let obs = self
-            .store
-            .storage()
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_delete is not supported on unstructured storage backends like memwal", None)),
+        };
+
+        let obs = structured
             .get_observation(&params.id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -51,8 +55,7 @@ impl MemDelete {
             ))]));
         }
 
-        self.store
-            .storage()
+        structured
             .delete_observation(&params.id, mode)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -80,18 +83,19 @@ mod tests {
     async fn test_mem_delete() {
         let (store, _dir) = MemoryStore::setup_test_store().await;
         let tool = MemDelete::new(store.clone());
-
-        // Create an observation manually
+        let storage = store.storage();
+        let structured = storage.as_structured().unwrap();
         let project = store.get_or_create_project(None).await.unwrap();
+
         let obs = Observation::new(
             project.id.clone(),
-            Scope::Global,
+            Scope::Project,
             MemoryType::Note,
             "Delete Me".to_string(),
             "To be deleted".to_string(),
         );
         let obs_id = obs.id.clone();
-        store.storage().save_observation(&obs).await.unwrap();
+        structured.save_observation(&obs).await.unwrap();
 
         // Delete observation
         let params = MemDeleteParams {
@@ -103,8 +107,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify it was soft-deleted
-        let deleted_obs = store
-            .storage()
+        let deleted_obs = structured
             .get_observation(&obs_id)
             .await
             .unwrap()

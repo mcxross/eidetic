@@ -29,7 +29,7 @@ impl MemoryStore {
             }
             "memwal" => {
                 let auth = Arc::new(AuthManager::new(auth_config).await?);
-                let storage = crate::storage::SqliteStorage::new(path).await?;
+                let storage = crate::storage::MemwalStorage::new(auth.clone());
                 auth_manager = Some(auth);
                 Arc::new(storage)
             }
@@ -79,6 +79,11 @@ impl MemoryStore {
     }
 
     pub async fn detect_project(&self, cwd: Option<String>) -> anyhow::Result<Option<ProjectId>> {
+        let structured = match self.storage.as_structured() {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+
         let cwd = cwd.unwrap_or_else(|| {
             std::env::current_dir()
                 .unwrap_or_default()
@@ -89,8 +94,7 @@ impl MemoryStore {
 
         let mut current = Some(path);
         while let Some(dir) = current {
-            if let Ok(Some(project)) = self
-                .storage
+            if let Ok(Some(project)) = structured
                 .get_project_by_path(&dir.to_string_lossy())
                 .await
             {
@@ -106,7 +110,7 @@ impl MemoryStore {
             .to_string();
         let canonical = Project::canonicalize(&dir_name);
 
-        for proj in self.storage.list_projects().await? {
+        for proj in structured.list_projects().await? {
             if proj.canonical_name == canonical || proj.aliases.iter().any(|a| a == &dir_name) {
                 return Ok(Some(proj.id));
             }
@@ -123,25 +127,40 @@ impl MemoryStore {
                 .to_string()
         });
 
-        if let Some(project_id) = self.detect_project(Some(cwd.clone())).await?
-            && let Some(project) = self.storage.get_project(&project_id).await?
-        {
-            return Ok(project);
+        let project_id_opt = self.detect_project(Some(cwd.clone())).await?;
+        
+        if let Some(structured) = self.storage.as_structured() {
+            if let Some(project_id) = project_id_opt {
+                if let Some(project) = structured.get_project(&project_id).await? {
+                    return Ok(project);
+                }
+            }
+
+            let project = Project::new(
+                std::path::Path::new(&cwd)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                cwd.clone(),
+            );
+
+            structured.save_project(&project).await?;
+            self.set_current_project(project.id.clone()).await;
+            Ok(project)
+        } else {
+            // Unstructured mode (Memwal): Mock a project to satisfy the tools' expectations
+            let project = Project::new(
+                std::path::Path::new(&cwd)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                cwd.clone(),
+            );
+            self.set_current_project(project.id.clone()).await;
+            Ok(project)
         }
-
-        let project = Project::new(
-            std::path::Path::new(&cwd)
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string(),
-            cwd.clone(),
-        );
-
-        self.storage.save_project(&project).await?;
-        self.set_current_project(project.id.clone()).await;
-
-        Ok(project)
     }
 }
 

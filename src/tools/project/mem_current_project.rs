@@ -43,9 +43,14 @@ impl MemCurrentProject {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_current_project is not supported on unstructured storage backends like memwal", None)),
+        };
+
         let project = if let Some(project_id) = detected {
-            self.store
-                .storage()
+            structured
                 .get_project(&project_id)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?

@@ -41,9 +41,13 @@ impl MemSessionEnd {
             })?
         };
 
-        let mut session = self
-            .store
-            .storage()
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("Sessions are not supported on unstructured storage backends like memwal", None)),
+        };
+
+        let mut session = structured
             .get_session(&session_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -59,8 +63,7 @@ impl MemSessionEnd {
         }
 
         session.ended_at = Some(Utc::now());
-        self.store
-            .storage()
+        structured
             .update_session(&session)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

@@ -33,9 +33,14 @@ impl MemContext {
         &self,
         Parameters(params): Parameters<MemContextParams>,
     ) -> Result<CallToolResult, McpError> {
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_context is not supported on unstructured storage backends like memwal", None)),
+        };
+
         let project = if let Some(pid) = params.project_id {
-            self.store
-                .storage()
+            structured
                 .get_project(&pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -53,23 +58,17 @@ impl MemContext {
         let session_limit = params.session_limit.unwrap_or(5).min(100);
         let observation_limit = params.observation_limit.unwrap_or(20).min(500);
 
-        let recent_sessions = self
-            .store
-            .storage()
+        let recent_sessions = structured
             .get_recent_sessions(&project_id, session_limit)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let recent_observations = self
-            .store
-            .storage()
+        let recent_observations = structured
             .get_recent_observations(&project_id, observation_limit)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let all_obs = self
-            .store
-            .storage()
+        let all_obs = structured
             .list_observations(&project_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

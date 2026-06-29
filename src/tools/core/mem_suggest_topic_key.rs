@@ -36,9 +36,14 @@ impl MemSuggestTopicKey {
         if params.content.trim().is_empty() {
             return Err(McpError::invalid_params("content must not be empty", None));
         }
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_suggest_topic_key is not supported on unstructured storage backends like memwal", None)),
+        };
+
         let project = if let Some(pid) = params.project_id {
-            self.store
-                .storage()
+            structured
                 .get_project(&pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -54,9 +59,7 @@ impl MemSuggestTopicKey {
 
         let project_id = project.id.clone();
 
-        let observations = self
-            .store
-            .storage()
+        let observations = structured
             .list_observations(&project_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -78,7 +81,7 @@ impl MemSuggestTopicKey {
         }
 
         similar.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let similar_topics: Vec<TopicKey> = similar.into_iter().take(5).map(|(t, _)| t).collect();
+        let similar_topics: Vec<TopicKey> = similar.into_iter().take(5).map(|(t, _)| t.to_string()).collect();
 
         let confidence = if similar_topics.is_empty() { 0.8 } else { 0.6 };
 

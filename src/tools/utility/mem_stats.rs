@@ -28,9 +28,14 @@ impl MemStats {
         &self,
         Parameters(params): Parameters<MemStatsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let project = if let Some(ref pid) = params.project_id {
-            self.store
-                .storage()
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_stats is not supported on unstructured storage backends like memwal", None)),
+        };
+
+        let project = if let Some(pid) = &params.project_id {
+            structured
                 .get_project(pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -38,30 +43,27 @@ impl MemStats {
                     McpError::invalid_params(format!("Project not found: {}", pid), None)
                 })?
         } else {
-            let project_id = self
-                .store
-                .detect_project(None)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| {
-                    McpError::invalid_params(
-                        "No project detected. Provide project_id or run from a project directory.",
-                        None,
-                    )
-                })?;
-            self.store
-                .storage()
-                .get_project(&project_id)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| {
-                    McpError::invalid_params("Detected project not found in storage", None)
-                })?
+            // First try to get existing project for cwd
+            let cwd = std::env::current_dir()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            if let Ok(Some(project_id)) = self.store.detect_project(Some(cwd)).await {
+                structured
+                    .get_project(&project_id)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                    .ok_or_else(|| McpError::internal_error("Failed to load detected project", None))?
+            } else {
+                // If no project exists for cwd, get/create default project
+                self.store
+                    .get_or_create_project(None)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            }
         };
 
-        let stats = self
-            .store
-            .storage()
+        let stats = structured
             .get_stats(&project.id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

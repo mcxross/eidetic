@@ -8,6 +8,7 @@ use rmcp::{
 };
 
 use crate::storage::MemoryStore;
+use crate::tools::harbor::*;
 use crate::tools::*;
 
 #[derive(Clone)]
@@ -40,6 +41,8 @@ pub struct EideticServer {
     memwal_remember: MemwalRemember,
     memwal_recall: MemwalRecall,
     memwal_batch: MemwalBatch,
+    mem_save_artifact: MemSaveArtifact,
+    mem_get_artifact: MemGetArtifact,
     eidetic_status: crate::tools::utility::status::EideticStatus,
 }
 
@@ -73,6 +76,8 @@ impl EideticServer {
             memwal_remember: MemwalRemember::new(store.clone()),
             memwal_recall: MemwalRecall::new(store.clone()),
             memwal_batch: MemwalBatch::new(store.clone()),
+            mem_save_artifact: MemSaveArtifact::new(store.clone()),
+            mem_get_artifact: MemGetArtifact::new(store.clone()),
             eidetic_status: crate::tools::utility::status::EideticStatus::new(store.clone()),
             store,
         }

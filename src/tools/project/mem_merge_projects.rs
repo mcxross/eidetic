@@ -30,6 +30,12 @@ impl MemMergeProjects {
         &self,
         Parameters(params): Parameters<MemMergeProjectsParams>,
     ) -> Result<CallToolResult, McpError> {
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("mem_merge_projects is not supported on unstructured storage backends like memwal", None)),
+        };
+
         if params
             .alias_project_ids
             .contains(&params.canonical_project_id)
@@ -40,9 +46,7 @@ impl MemMergeProjects {
             ));
         }
 
-        let mut canonical = self
-            .store
-            .storage()
+        let mut canonical = structured
             .get_project(&params.canonical_project_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -58,38 +62,30 @@ impl MemMergeProjects {
 
         let mut merged_count = 0;
         for alias_id in &params.alias_project_ids {
-            if let Some(alias_proj) = self
-                .store
-                .storage()
+            if let Some(alias_proj) = structured
                 .get_project(alias_id)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
             {
-                let observations = self
-                    .store
-                    .storage()
+                let observations = structured
                     .list_observations(&alias_proj.id)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
                 for mut obs in observations {
                     obs.project_id = canonical.id.clone();
-                    self.store
-                        .storage()
+                    structured
                         .update_observation(&obs)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
                 }
 
-                let sessions = self
-                    .store
-                    .storage()
+                let sessions = structured
                     .list_sessions(&alias_proj.id)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
                 for mut sess in sessions {
                     sess.project_id = canonical.id.clone();
-                    self.store
-                        .storage()
+                    structured
                         .update_session(&sess)
                         .await
                         .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -101,8 +97,7 @@ impl MemMergeProjects {
 
                 let mut alias_proj = alias_proj;
                 alias_proj.active = false;
-                self.store
-                    .storage()
+                structured
                     .update_project(&alias_proj)
                     .await
                     .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -111,8 +106,7 @@ impl MemMergeProjects {
             }
         }
 
-        self.store
-            .storage()
+        structured
             .update_project(&canonical)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

@@ -111,8 +111,12 @@ impl App {
         }
     }
 
+    pub fn structured(&self) -> &dyn crate::storage::StructuredStorage {
+        self.storage.as_structured().expect("TUI requires a structured storage backend")
+    }
+
     pub async fn load_projects(&mut self) -> anyhow::Result<()> {
-        self.projects = self.storage.list_projects().await?;
+        self.projects = self.structured().list_projects().await?;
         self.projects.sort_by(|a, b| a.name.cmp(&b.name));
         self.project_cursor = 0;
         Ok(())
@@ -120,7 +124,7 @@ impl App {
 
     pub async fn load_observations(&mut self) -> anyhow::Result<()> {
         if let Some(proj) = &self.active_project {
-            let mut all = self.storage.list_observations(&proj.id).await?;
+            let mut all = self.structured().list_observations(&proj.id).await?;
             all.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
             let start = self.observation_page * self.page_size;
             if start < all.len() {
@@ -138,7 +142,7 @@ impl App {
 
     pub async fn load_sessions(&mut self) -> anyhow::Result<()> {
         if let Some(proj) = &self.active_project {
-            let mut all = self.storage.list_sessions(&proj.id).await?;
+            let mut all = self.structured().list_sessions(&proj.id).await?;
             all.sort_by_key(|b| std::cmp::Reverse(b.started_at));
             let start = self.session_page * self.page_size;
             if start < all.len() {
@@ -158,7 +162,7 @@ impl App {
         if let Some(proj) = &self.active_project {
             if !self.input_buffer.is_empty() {
                 self.search_results = self
-                    .storage
+                    .structured()
                     .search_observations(&proj.id, &self.input_buffer, self.page_size)
                     .await?;
             } else {
@@ -170,13 +174,13 @@ impl App {
     }
 
     pub async fn load_observation_detail(&mut self, id: &ObservationId) -> anyhow::Result<()> {
-        self.detail_observation = self.storage.get_observation(id).await?;
+        self.detail_observation = self.structured().get_observation(id).await?;
         Ok(())
     }
 
     pub async fn load_session_detail(&mut self, id: &SessionId) -> anyhow::Result<()> {
-        self.detail_session = self.storage.get_session(id).await?;
-        self.detail_session_observations = self.storage.get_observations_by_session(id).await?;
+        self.detail_session = self.structured().get_session(id).await?;
+        self.detail_session_observations = self.structured().get_observations_by_session(id).await?;
         Ok(())
     }
 
@@ -184,7 +188,7 @@ impl App {
         if let Some(obs) = self.selected_observation() {
             let id = obs.id.clone();
             let title = obs.title.clone();
-            self.storage
+            self.structured()
                 .delete_observation(&id, DeleteMode::Soft)
                 .await?;
             self.status = format!("Soft-deleted: {}", title);
@@ -195,12 +199,12 @@ impl App {
 
     pub async fn hard_delete_confirmed(&mut self, id: &ObservationId) -> anyhow::Result<()> {
         let title = self
-            .storage
+            .structured()
             .get_observation(id)
             .await?
             .map(|o| o.title.clone())
             .unwrap_or_else(|| id.clone());
-        self.storage
+        self.structured()
             .delete_observation(id, DeleteMode::Hard)
             .await?;
         self.status = format!("Hard-deleted: {}", title);
@@ -214,7 +218,7 @@ impl App {
             let mut obs = obs.clone();
             obs.reviewed_at = Some(chrono::Utc::now());
             obs.review_after = Some(chrono::Utc::now() + chrono::Duration::days(7));
-            self.storage.update_observation(&obs).await?;
+            self.structured().update_observation(&obs).await?;
             self.status = format!("Marked reviewed: {}", obs.title);
             self.reload_current_list().await?;
         }

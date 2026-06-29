@@ -31,9 +31,14 @@ impl MemSessionStart {
         &self,
         Parameters(params): Parameters<MemSessionStartParams>,
     ) -> Result<CallToolResult, McpError> {
+        let storage = self.store.storage();
+        let structured = match storage.as_structured() {
+            Some(s) => s,
+            None => return Err(McpError::internal_error("Sessions are not supported on unstructured storage backends like memwal", None)),
+        };
+
         let project = if let Some(pid) = params.project_id {
-            self.store
-                .storage()
+            structured
                 .get_project(&pid)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
@@ -49,23 +54,20 @@ impl MemSessionStart {
 
         let project_id = project.id.clone();
 
-        let existing_sessions = self
-            .store
-            .storage()
+        let existing_sessions = structured
             .list_sessions(&project_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if let Some(active) = existing_sessions.iter().find(|s| s.ended_at.is_none()) {
             return Ok(CallToolResult::success(vec![Content::text(format!(
                 "Session already active: {} (ID: {})",
-                params.name.unwrap_or_else(|| "unnamed".to_string()),
+                params.name.as_deref().unwrap_or("unnamed"),
                 active.id
             ))]));
         }
 
         let session = Session::new(project_id.clone());
-        self.store
-            .storage()
+        structured
             .save_session(&session)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -75,22 +77,17 @@ impl MemSessionStart {
         let session_limit = 5;
         let observation_limit = 20;
 
-        let recent_sessions = self
-            .store
-            .storage()
+        let recent_sessions = structured
             .get_recent_sessions(&project_id, session_limit)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        let recent_observations = self
-            .store
-            .storage()
+
+        let recent_observations = structured
             .get_recent_observations(&project_id, observation_limit)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        let all_obs = self
-            .store
-            .storage()
+        let all_obs = structured
             .list_observations(&project_id)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

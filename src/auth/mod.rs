@@ -186,6 +186,15 @@ impl AuthManager {
         self.ensure_memwal_client().await
     }
 
+    pub async fn get_sui_private_key(&self) -> anyhow::Result<String> {
+        let state = self.state.read().await;
+        if let Some(selected) = &state.selected {
+            Ok(selected.suiprivkey.clone())
+        } else {
+            anyhow::bail!("No active Sui account configured")
+        }
+    }
+
     pub async fn config_snapshot(&self) -> anyhow::Result<MemwalConfigSnapshot> {
         let state = self.state.read().await;
         let sui_state = state.sui_state.clone().unwrap_or_default();

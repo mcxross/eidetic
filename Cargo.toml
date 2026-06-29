@@ -39,6 +39,9 @@ rpassword = "5"
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "5f87e04bb21d295ef6b39375a06615d45cbb906c", version = "0.1.9" }
 bech32 = "0.9.1"
 sui-sdk = { git = "https://github.com/MystenLabs/sui", tag = "mainnet-v1.73.2" }
+seal-sdk-rs = { git = "https://github.com/astinz/seal-sdk-rs.git", branch = "main", default-features = false, features = ["client", "native-sui-sdk"] }
+sui-rpc = { git = "https://github.com/mystenlabs/sui-rust-sdk", rev = "51ea346" }
+sui-sdk-types = { git = "https://github.com/mystenlabs/sui-rust-sdk", rev = "51ea346", features = ["hash", "serde"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

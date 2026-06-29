@@ -7,7 +7,7 @@ use sqlx::{
 use std::path::Path;
 
 use crate::memory::types::*;
-use crate::storage::Storage;
+use crate::storage::{Storage, StorageCapabilities, StructuredStorage};
 
 pub struct SqliteStorage {
     pool: SqlitePool,
@@ -128,6 +128,54 @@ impl SqliteStorage {
 
 #[async_trait]
 impl Storage for SqliteStorage {
+    fn capabilities(&self) -> StorageCapabilities {
+        StorageCapabilities::Structured
+    }
+
+    fn as_structured(&self) -> Option<&dyn StructuredStorage> {
+        Some(self)
+    }
+
+    async fn health_check(&self) -> anyhow::Result<StoreHealth> {
+        // Verify DB is readable
+        let readable = sqlx::query("SELECT 1").fetch_one(&self.pool).await.is_ok();
+
+        // Verify DB is writable (try a harmless write)
+        let writable = sqlx::query("CREATE TABLE IF NOT EXISTS _health_check_probe (id INTEGER)")
+            .execute(&self.pool)
+            .await
+            .is_ok();
+
+        // Count orphaned observations (project_id not in projects table)
+        let orphaned_obs_row = sqlx::query("SELECT COUNT(*) as c FROM observations WHERE project_id NOT IN (SELECT id FROM projects)")
+            .fetch_one(&self.pool)
+            .await;
+        let orphaned_observations = orphaned_obs_row
+            .map(|r| r.get::<i64, _>("c") as usize)
+            .unwrap_or(0);
+
+        // Count orphaned sessions
+        let orphaned_sess_row = sqlx::query(
+            "SELECT COUNT(*) as c FROM sessions WHERE project_id NOT IN (SELECT id FROM projects)",
+        )
+        .fetch_one(&self.pool)
+        .await;
+        let orphaned_sessions = orphaned_sess_row
+            .map(|r| r.get::<i64, _>("c") as usize)
+            .unwrap_or(0);
+
+        Ok(StoreHealth {
+            readable,
+            writable,
+            corruption_detected: false,
+            orphaned_observations,
+            orphaned_sessions,
+        })
+    }
+}
+
+#[async_trait]
+impl StructuredStorage for SqliteStorage {
     async fn save_project(&self, project: &Project) -> anyhow::Result<()> {
         let aliases_json = serde_json::to_string(&project.aliases)?;
         sqlx::query(
@@ -775,43 +823,6 @@ impl Storage for SqliteStorage {
             storage_size_bytes,
             oldest_observation,
             newest_observation,
-        })
-    }
-
-    async fn health_check(&self) -> anyhow::Result<StoreHealth> {
-        // Verify DB is readable
-        let readable = sqlx::query("SELECT 1").fetch_one(&self.pool).await.is_ok();
-
-        // Verify DB is writable (try a harmless write)
-        let writable = sqlx::query("CREATE TABLE IF NOT EXISTS _health_check_probe (id INTEGER)")
-            .execute(&self.pool)
-            .await
-            .is_ok();
-
-        // Count orphaned observations (project_id not in projects table)
-        let orphaned_obs_row = sqlx::query("SELECT COUNT(*) as c FROM observations WHERE project_id NOT IN (SELECT id FROM projects)")
-            .fetch_one(&self.pool)
-            .await;
-        let orphaned_observations = orphaned_obs_row
-            .map(|r| r.get::<i64, _>("c") as usize)
-            .unwrap_or(0);
-
-        // Count orphaned sessions
-        let orphaned_sess_row = sqlx::query(
-            "SELECT COUNT(*) as c FROM sessions WHERE project_id NOT IN (SELECT id FROM projects)",
-        )
-        .fetch_one(&self.pool)
-        .await;
-        let orphaned_sessions = orphaned_sess_row
-            .map(|r| r.get::<i64, _>("c") as usize)
-            .unwrap_or(0);
-
-        Ok(StoreHealth {
-            readable,
-            writable,
-            corruption_detected: false,
-            orphaned_observations,
-            orphaned_sessions,
         })
     }
 }

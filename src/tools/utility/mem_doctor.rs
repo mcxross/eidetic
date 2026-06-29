@@ -53,16 +53,18 @@ impl MemDoctor {
         };
 
         if let Ok(Some(pid)) = self.store.detect_project(Some(cwd.clone())).await {
-            if let Ok(Some(project)) = self.store.storage().get_project(&pid).await {
-                detection.detected_project = Some(pid.clone());
-                detection.confidence = 1.0;
-                detection.candidates.push(ProjectCandidate {
-                    project_id: pid,
-                    name: project.name,
-                    path: project.path,
-                    match_reason: "Exact or path match".to_string(),
-                    score: 1.0,
-                });
+            if let Some(structured) = self.store.storage().as_structured() {
+                if let Ok(Some(project)) = structured.get_project(&pid).await {
+                    detection.detected_project = Some(pid.clone());
+                    detection.confidence = 1.0;
+                    detection.candidates.push(ProjectCandidate {
+                        project_id: pid,
+                        name: project.name,
+                        path: project.path,
+                        match_reason: "Exact or path match".to_string(),
+                        score: 1.0,
+                    });
+                }
             }
         } else {
             issues.push(DiagnosticIssue {

@@ -1,5 +1,5 @@
 use crate::memory::types::*;
-use crate::storage::Storage;
+use crate::storage::{Storage, StorageCapabilities, StructuredStorage};
 use async_trait::async_trait;
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
@@ -173,6 +173,34 @@ impl FileStorage {
 
 #[async_trait]
 impl Storage for FileStorage {
+    fn capabilities(&self) -> StorageCapabilities {
+        StorageCapabilities::Structured
+    }
+
+    fn as_structured(&self) -> Option<&dyn StructuredStorage> {
+        Some(self)
+    }
+
+    async fn health_check(&self) -> anyhow::Result<StoreHealth> {
+        let readable = tokio::fs::read_dir(&self.base_path).await.is_ok();
+        let test_file = self.base_path.join(".health_probe");
+        let writable = tokio::fs::write(&test_file, b"test").await.is_ok();
+        if writable {
+            let _ = tokio::fs::remove_file(test_file).await;
+        }
+
+        Ok(StoreHealth {
+            readable,
+            writable,
+            corruption_detected: false,
+            orphaned_observations: 0,
+            orphaned_sessions: 0,
+        })
+    }
+}
+
+#[async_trait]
+impl StructuredStorage for FileStorage {
     async fn save_observation(&self, obs: &Observation) -> anyhow::Result<()> {
         Self::sanitize_id(&obs.id)?;
         self.observations.insert(obs.id.clone(), obs.clone());
@@ -526,50 +554,6 @@ impl Storage for FileStorage {
             storage_size_bytes: storage_size,
             oldest_observation: oldest,
             newest_observation: newest,
-        })
-    }
-
-    async fn health_check(&self) -> anyhow::Result<StoreHealth> {
-        let mut issues = Vec::new();
-        let mut orphaned_obs = 0;
-        let mut orphaned_sess = 0;
-
-        for obs in self.observations.iter() {
-            if !self.projects.contains_key(&obs.project_id) {
-                orphaned_obs += 1;
-            }
-        }
-
-        for sess in self.sessions.iter() {
-            if !self.projects.contains_key(&sess.project_id) {
-                orphaned_sess += 1;
-            }
-        }
-
-        if orphaned_obs > 0 {
-            issues.push(DiagnosticIssue {
-                severity: IssueSeverity::Warning,
-                category: "orphaned_data".to_string(),
-                message: format!("Found {} observations with missing projects", orphaned_obs),
-                suggestion: Some("Run mem_doctor to clean up".to_string()),
-            });
-        }
-
-        if orphaned_sess > 0 {
-            issues.push(DiagnosticIssue {
-                severity: IssueSeverity::Warning,
-                category: "orphaned_data".to_string(),
-                message: format!("Found {} sessions with missing projects", orphaned_sess),
-                suggestion: Some("Run mem_doctor to clean up".to_string()),
-            });
-        }
-
-        Ok(StoreHealth {
-            readable: true,
-            writable: true,
-            corruption_detected: false,
-            orphaned_observations: orphaned_obs,
-            orphaned_sessions: orphaned_sess,
         })
     }
 }

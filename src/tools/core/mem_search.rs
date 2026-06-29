@@ -36,66 +36,104 @@ impl MemSearch {
             return Err(McpError::invalid_params("query must not be empty", None));
         }
 
-        let project = if let Some(pid) = params.project_id {
-            self.store
-                .storage()
-                .get_project(&pid)
+        let storage = self.store.storage();
+
+        if let Some(structured) = storage.as_structured() {
+            let project = if let Some(pid) = &params.project_id {
+                structured
+                    .get_project(&pid)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+                    .ok_or_else(|| {
+                        McpError::invalid_params(format!("Project not found: {}", pid), None)
+                    })?
+            } else {
+                self.store
+                    .get_or_create_project(None)
+                    .await
+                    .map_err(|e| McpError::internal_error(e.to_string(), None))?
+            };
+
+            let project_id = project.id.clone();
+            let limit = params.limit.unwrap_or(20).min(500);
+
+            let results = structured
+                .search_observations(&project_id, &params.query, limit)
                 .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?
-                .ok_or_else(|| {
-                    McpError::invalid_params(format!("Project not found: {}", pid), None)
-                })?
-        } else {
-            self.store
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+            let output = if results.is_empty() {
+                "No results found".to_string()
+            } else {
+                results
+                    .iter()
+                    .enumerate()
+                    .map(|(i, r)| {
+                        let ra_str = r
+                            .observation
+                            .review_after
+                            .map(|d| format!(" [Review: {}]", d.to_rfc3339()))
+                            .unwrap_or_default();
+                        format!(
+                            "{}. [{:?} | Scope: {:?} | State: {:?}]{} {} (score: {:.1}) - {}",
+                            i + 1,
+                            r.observation.memory_type,
+                            r.observation.scope,
+                            r.observation.lifecycle,
+                            ra_str,
+                            r.observation.title,
+                            r.score,
+                            r.observation.content.chars().take(100).collect::<String>()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "Found {} results for '{}':\n{}",
+                results.len(),
+                params.query,
+                output
+            ))]))
+        } else if let Some(unstructured) = storage.as_unstructured() {
+            let project = self
+                .store
                 .get_or_create_project(None)
                 .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?
-        };
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            
+            let namespace = project.id.clone();
 
-        let project_id = project.id.clone();
-        let limit = params.limit.unwrap_or(20).min(500);
+            let limit = params.limit.unwrap_or(20).min(500);
+            
+            let results = unstructured
+                .recall(&params.query, Some(&namespace))
+                .await
+                .map_err(|e| McpError::internal_error(format!("Memwal recall failed: {}", e), None))?;
 
-        let results = self
-            .store
-            .storage()
-            .search_observations(&project_id, &params.query, limit)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            let output = if results.is_empty() {
+                "No results found".to_string()
+            } else {
+                results
+                    .iter()
+                    .enumerate()
+                    .map(|(i, text)| {
+                        format!("{}. {}", i + 1, text.chars().take(200).collect::<String>())
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            };
 
-        let output = if results.is_empty() {
-            "No results found".to_string()
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "Found {} results for '{}' from Memwal network:\n{}",
+                results.len(),
+                params.query,
+                output
+            ))]))
         } else {
-            results
-                .iter()
-                .enumerate()
-                .map(|(i, r)| {
-                    let ra_str = r
-                        .observation
-                        .review_after
-                        .map(|d| format!(" [Review: {}]", d.to_rfc3339()))
-                        .unwrap_or_default();
-                    format!(
-                        "{}. [{:?} | Scope: {:?} | State: {:?}]{} {} (score: {:.1}) - {}",
-                        i + 1,
-                        r.observation.memory_type,
-                        r.observation.scope,
-                        r.observation.lifecycle,
-                        ra_str,
-                        r.observation.title,
-                        r.score,
-                        r.observation.content.chars().take(100).collect::<String>()
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Found {} results for '{}':\n{}",
-            results.len(),
-            params.query,
-            output
-        ))]))
+            Err(McpError::internal_error("Storage backend has no known capabilities", None))
+        }
     }
 }
 
@@ -104,29 +142,29 @@ mod tests {
     use super::*;
     use crate::memory::types::{MemoryType, Observation, Scope};
     use crate::storage::MemoryStore;
-    use chrono::Utc;
-    use rmcp::handler::server::wrapper::Parameters;
 
     #[tokio::test]
     async fn test_mem_search() {
         let (store, _dir) = MemoryStore::setup_test_store().await;
-        let tool = MemSearch::new(store.clone());
-
-        // Create an observation manually
+        let storage = store.storage();
+        let structured = storage.as_structured().unwrap();
         let project = store.get_or_create_project(None).await.unwrap();
+
         let obs = Observation::new(
             project.id.clone(),
-            Scope::Global,
+            Scope::Project,
             MemoryType::Note,
-            "Unique Title ABC".to_string(),
-            "This contains a unique query string XYZ123".to_string(),
+            "Rust async".to_string(),
+            "Rust async uses Future trait.".to_string(),
         );
-        store.storage().save_observation(&obs).await.unwrap();
+        structured.save_observation(&obs).await.unwrap();
+
+        let tool = MemSearch::new(store.clone());
 
         // Test search
         let params = MemSearchParams {
             project_id: None,
-            query: "XYZ123".to_string(),
+            query: "async".to_string(),
             limit: Some(10),
         };
 
@@ -134,6 +172,6 @@ mod tests {
         assert!(result.is_ok());
         let res = result.unwrap();
         let content_str = format!("{:?}", res.content[0]);
-        assert!(content_str.contains("Unique Title ABC"));
+        assert!(content_str.contains("Rust async"));
     }
 }

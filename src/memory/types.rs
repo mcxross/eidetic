@@ -32,6 +32,7 @@ pub enum MemoryType {
     CodeSnippet,
     Error,
     Learning,
+    Artifact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

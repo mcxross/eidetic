@@ -1,3 +1,5 @@
+pub mod artifacts;
+
 use anyhow::{Context, Result};
 use chrono::Utc;
 use sha2::{Digest, Sha256};
@@ -75,27 +77,43 @@ impl HarborBackupManager {
         format!("backup_{}.enc", day)
     }
 
-    pub async fn create_snapshot(db_path: &Path) -> Result<PathBuf> {
-        let snapshot_path = db_path.with_extension("backup.tmp");
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(
-                sqlx::sqlite::SqliteConnectOptions::new()
-                    .filename(db_path)
-                    .read_only(true),
-            )
-            .await
-            .context("Failed to open database for snapshot")?;
+    pub async fn create_snapshot(db_path: &Path, backend: &str) -> Result<PathBuf> {
+        let snapshot_path = db_path.with_extension(if backend == "file" { "backup.tar.gz" } else { "backup.tmp" });
+        
+        if backend == "file" {
+            let output = std::process::Command::new("tar")
+                .arg("-czf")
+                .arg(&snapshot_path)
+                .arg("-C")
+                .arg(db_path.parent().unwrap())
+                .arg(db_path.file_name().unwrap())
+                .output()
+                .context("Failed to execute tar command")?;
+                
+            if !output.status.success() {
+                anyhow::bail!("Tar command failed: {:?}", output);
+            }
+        } else {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(1)
+                .connect_with(
+                    sqlx::sqlite::SqliteConnectOptions::new()
+                        .filename(db_path)
+                        .read_only(true),
+                )
+                .await
+                .context("Failed to open database for snapshot")?;
 
-        let query = Box::leak(
-            format!("VACUUM INTO '{}'", snapshot_path.to_string_lossy()).into_boxed_str(),
-        );
-        use sqlx::Executor;
-        pool.execute(&*query)
-            .await
-            .context("Failed to create database snapshot via VACUUM INTO")?;
+            let query = Box::leak(
+                format!("VACUUM INTO '{}'", snapshot_path.to_string_lossy()).into_boxed_str(),
+            );
+            use sqlx::Executor;
+            pool.execute(&*query)
+                .await
+                .context("Failed to create database snapshot via VACUUM INTO")?;
 
-        pool.close().await;
+            pool.close().await;
+        }
         Ok(snapshot_path)
     }
 
@@ -153,8 +171,9 @@ impl HarborBackupManager {
         Ok(data.to_vec())
     }
 
-    pub async fn backup(&self, db_path: &Path) -> Result<String> {
-        let snapshot_path = Self::create_snapshot(db_path).await?;
+    pub async fn backup(&self, db_path: &Path, backend: &str) -> Result<String> {
+        // 1. Create snapshot
+        let snapshot_path = Self::create_snapshot(db_path, backend).await?;
         let snapshot_bytes = tokio::fs::read(&snapshot_path)
             .await
             .context("Failed to read snapshot file")?;
