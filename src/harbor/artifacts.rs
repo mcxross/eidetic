@@ -21,6 +21,7 @@ pub struct ArtifactManager {
     harbor: HarborClient,
     config: HarborConfig,
     auth: Arc<AuthManager>,
+    sui_client: tokio::sync::OnceCell<sui_rpc::Client>,
 }
 
 impl ArtifactManager {
@@ -50,7 +51,21 @@ impl ArtifactManager {
             harbor,
             config,
             auth,
+            sui_client: tokio::sync::OnceCell::new(),
         }
+    }
+
+    async fn get_sui_client(&self) -> Result<&sui_rpc::Client> {
+        self.sui_client
+            .get_or_try_init(|| async {
+                let rpc_url = self
+                    .auth
+                    .active_rpc_url()
+                    .await
+                    .unwrap_or_else(|| "https://fullnode.testnet.sui.io:443".to_string());
+                sui_rpc::Client::new(&rpc_url).map_err(anyhow::Error::from)
+            })
+            .await
     }
 
     async fn get_sui_keypair(&self) -> Result<Ed25519KeyPair> {
@@ -102,7 +117,7 @@ impl ArtifactManager {
                 .as_ref()
                 .context("seal_key_server_ids not configured")?;
 
-            let sui_client = sui_rpc::Client::new("https://fullnode.testnet.sui.io:443")?;
+            let sui_client = self.get_sui_client().await?.clone();
             let seal = HarborSealService::new(
                 sui_client,
                 seal_key_servers.iter().map(|s| s.as_str()).collect(),
@@ -161,7 +176,7 @@ impl ArtifactManager {
                 .as_ref()
                 .context("seal_key_server_ids not configured")?;
 
-            let mut sui_client = sui_rpc::Client::new("https://fullnode.testnet.sui.io:443")?;
+            let mut sui_client = self.get_sui_client().await?.clone();
             let seal = HarborSealService::new(
                 sui_client.clone(),
                 seal_key_servers.iter().map(|s| s.as_str()).collect(),

@@ -24,7 +24,10 @@ impl SqliteStorage {
         let options = SqliteConnectOptions::new()
             .filename(&db_path)
             .create_if_missing(true)
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .pragma("synchronous", "NORMAL")
+            .pragma("temp_store", "MEMORY")
+            .pragma("cache_size", "-2000");
 
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
@@ -119,6 +122,12 @@ impl SqliteStorage {
             created_at TEXT NOT NULL,
             judged_by TEXT
         );
+
+        CREATE INDEX IF NOT EXISTS idx_observations_project_created ON observations (project_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_observations_session ON observations (session_id);
+        CREATE INDEX IF NOT EXISTS idx_observations_topic ON observations (project_id, topic_key);
+        CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions (project_id);
+        CREATE INDEX IF NOT EXISTS idx_relations_source_target ON relations (source_id, target_id);
         "#;
 
         sqlx::query(schema).execute(&self.pool).await?;
@@ -201,52 +210,33 @@ impl StructuredStorage for SqliteStorage {
             .await?;
 
         if let Some(row) = row {
-            let aliases: Vec<String> = serde_json::from_str(row.get("aliases"))?;
-            let created_at =
-                DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let updated_at =
-                DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
-
-            Ok(Some(Project {
-                id: row.get("id"),
-                name: row.get("name"),
-                canonical_name: row.get("canonical_name"),
-                path: row.get("path"),
-                aliases,
-                created_at,
-                updated_at,
-                active: true, // Assuming true since it exists
-            }))
+            Ok(Some(map_row_to_project(&row)?))
         } else {
             Ok(None)
         }
     }
 
     async fn get_project_by_path(&self, path: &str) -> anyhow::Result<Option<Project>> {
-        let row = sqlx::query("SELECT id FROM projects WHERE path = ? LIMIT 1")
+        let row = sqlx::query("SELECT * FROM projects WHERE path = ? LIMIT 1")
             .bind(path)
             .fetch_optional(&self.pool)
             .await?;
 
         if let Some(row) = row {
-            let id: String = row.get("id");
-            self.get_project(&id).await
+            Ok(Some(map_row_to_project(&row)?))
         } else {
             Ok(None)
         }
     }
 
     async fn list_projects(&self) -> anyhow::Result<Vec<Project>> {
-        let rows = sqlx::query("SELECT id FROM projects")
+        let rows = sqlx::query("SELECT * FROM projects")
             .fetch_all(&self.pool)
             .await?;
 
         let mut projects = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(p) = self.get_project(&id).await? {
-                projects.push(p);
-            }
+            projects.push(map_row_to_project(&row)?);
         }
         Ok(projects)
     }
@@ -278,22 +268,7 @@ impl StructuredStorage for SqliteStorage {
             .await?;
 
         if let Some(row) = row {
-            let created_at =
-                DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let ended_at = row
-                .get::<Option<String>, _>("updated_at")
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc));
-
-            Ok(Some(Session {
-                id: row.get("id"),
-                project_id: row.get("project_id"),
-                started_at: created_at,
-                ended_at,
-                summary: None,
-                context_injected: false,
-                observation_ids: vec![], // Not stored in schema directly, would need join
-            }))
+            Ok(Some(map_row_to_session(&row)?))
         } else {
             Ok(None)
         }
@@ -305,17 +280,14 @@ impl StructuredStorage for SqliteStorage {
 
     async fn list_sessions(&self, project_id: &ProjectId) -> anyhow::Result<Vec<Session>> {
         let rows =
-            sqlx::query("SELECT id FROM sessions WHERE project_id = ? ORDER BY created_at DESC")
+            sqlx::query("SELECT * FROM sessions WHERE project_id = ? ORDER BY created_at DESC")
                 .bind(project_id)
                 .fetch_all(&self.pool)
                 .await?;
 
         let mut sessions = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(s) = self.get_session(&id).await? {
-                sessions.push(s);
-            }
+            sessions.push(map_row_to_session(&row)?);
         }
         Ok(sessions)
     }
@@ -326,7 +298,7 @@ impl StructuredStorage for SqliteStorage {
         limit: usize,
     ) -> anyhow::Result<Vec<Session>> {
         let rows = sqlx::query(
-            "SELECT id FROM sessions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+            "SELECT * FROM sessions WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
         )
         .bind(project_id)
         .bind(limit as i64)
@@ -335,10 +307,7 @@ impl StructuredStorage for SqliteStorage {
 
         let mut sessions = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(s) = self.get_session(&id).await? {
-                sessions.push(s);
-            }
+            sessions.push(map_row_to_session(&row)?);
         }
         Ok(sessions)
     }
@@ -404,66 +373,7 @@ impl StructuredStorage for SqliteStorage {
             .await?;
 
         if let Some(row) = row {
-            let tags: Vec<String> = serde_json::from_str(row.get("tags"))?;
-            let metadata: std::collections::HashMap<String, serde_json::Value> =
-                serde_json::from_str(row.get("metadata"))?;
-            let memory_type: MemoryType =
-                serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("type")))?;
-            let scope: Scope =
-                serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("scope")))?;
-            let lifecycle: LifecycleState =
-                serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("lifecycle_state")))?;
-            let created_at =
-                DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-            let updated_at =
-                DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
-            let last_seen_at =
-                DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
-
-            let reviewed_at = row
-                .get::<Option<String>, _>("reviewed_at")
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc));
-            let review_after = row
-                .get::<Option<String>, _>("review_after")
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc));
-            let deleted_at = row
-                .get::<Option<String>, _>("deleted_at")
-                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                .map(|dt| dt.with_timezone(&Utc));
-            let deleted_mode = row
-                .get::<Option<String>, _>("deleted_mode")
-                .and_then(|s| serde_json::from_str(&format!("\"{}\"", s)).ok());
-            let related_observations: Vec<String> =
-                serde_json::from_str(row.get("related_observations"))?;
-
-            Ok(Some(Observation {
-                id: row.get("id"),
-                project_id: row.get("project_id"),
-                session_id: row.get("session_id"),
-                title: row.get("title"),
-                content: row.get("content"),
-                tags,
-                metadata,
-                memory_type,
-                scope,
-                lifecycle,
-                topic_key: row.get("topic_key"),
-                hash: row.get("hash"),
-                revision_count: row.get::<i32, _>("revision_count") as u32,
-                duplicate_count: row.get::<i32, _>("duplicate_count") as u32,
-                created_at,
-                updated_at,
-                last_seen_at,
-                reviewed_at,
-                review_after,
-                deleted_at,
-                deleted_mode,
-                related_observations,
-                source_prompt: row.get("source_prompt"),
-                capture_prompt: row.get("capture_prompt"),
-            }))
+            Ok(Some(map_row_to_observation(&row)?))
         } else {
             Ok(None)
         }
@@ -499,17 +409,14 @@ impl StructuredStorage for SqliteStorage {
     }
 
     async fn list_observations(&self, project_id: &ProjectId) -> anyhow::Result<Vec<Observation>> {
-        let rows = sqlx::query("SELECT id FROM observations WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC")
+        let rows = sqlx::query("SELECT * FROM observations WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC")
             .bind(project_id)
             .fetch_all(&self.pool)
             .await?;
 
         let mut obs = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(o) = self.get_observation(&id).await? {
-                obs.push(o);
-            }
+            obs.push(map_row_to_observation(&row)?);
         }
         Ok(obs)
     }
@@ -522,26 +429,31 @@ impl StructuredStorage for SqliteStorage {
     ) -> anyhow::Result<Vec<SearchResult>> {
         let safe_query = format!("\"{}\"", query.replace("\"", "\"\""));
         let rows = sqlx::query(
-            "SELECT observations_fts.id, bm25(observations_fts) as rank FROM observations_fts JOIN observations o ON observations_fts.id = o.id WHERE observations_fts MATCH ? AND o.deleted_at IS NULL ORDER BY rank LIMIT ?"
+            "SELECT o.*, bm25(observations_fts) as rank
+             FROM observations_fts
+             JOIN observations o ON observations_fts.id = o.id
+             WHERE observations_fts MATCH ?
+               AND o.project_id = ?
+               AND o.deleted_at IS NULL
+             ORDER BY rank
+             LIMIT ?"
         )
-            .bind(&safe_query)
-            .bind(limit as i64)
-            .fetch_all(&self.pool)
-            .await?;
+        .bind(&safe_query)
+        .bind(project_id)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut results = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
             let rank: f64 = row.get("rank");
-            if let Some(obs) = self.get_observation(&id).await?
-                && &obs.project_id == project_id
-            {
-                results.push(SearchResult {
-                    observation: obs,
-                    score: (1.0 / (1.0 + rank)) as f32,
-                    matched_fields: vec!["content".to_string()],
-                });
-            }
+            let obs = map_row_to_observation(&row)?;
+            let score = -rank as f32;
+            results.push(SearchResult {
+                observation: obs,
+                score,
+                matched_fields: vec!["content".to_string()],
+            });
         }
 
         results.sort_by(|a, b| {
@@ -557,7 +469,7 @@ impl StructuredStorage for SqliteStorage {
         project_id: &ProjectId,
         topic_key: &TopicKey,
     ) -> anyhow::Result<Vec<Observation>> {
-        let rows = sqlx::query("SELECT id FROM observations WHERE project_id = ? AND topic_key = ? AND deleted_at IS NULL ORDER BY created_at DESC")
+        let rows = sqlx::query("SELECT * FROM observations WHERE project_id = ? AND topic_key = ? AND deleted_at IS NULL ORDER BY created_at DESC")
             .bind(project_id)
             .bind(topic_key)
             .fetch_all(&self.pool)
@@ -565,10 +477,7 @@ impl StructuredStorage for SqliteStorage {
 
         let mut obs = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(o) = self.get_observation(&id).await? {
-                obs.push(o);
-            }
+            obs.push(map_row_to_observation(&row)?);
         }
         Ok(obs)
     }
@@ -577,17 +486,14 @@ impl StructuredStorage for SqliteStorage {
         &self,
         session_id: &SessionId,
     ) -> anyhow::Result<Vec<Observation>> {
-        let rows = sqlx::query("SELECT id FROM observations WHERE session_id = ? AND deleted_at IS NULL ORDER BY created_at DESC")
+        let rows = sqlx::query("SELECT * FROM observations WHERE session_id = ? AND deleted_at IS NULL ORDER BY created_at DESC")
             .bind(session_id)
             .fetch_all(&self.pool)
             .await?;
 
         let mut obs = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(o) = self.get_observation(&id).await? {
-                obs.push(o);
-            }
+            obs.push(map_row_to_observation(&row)?);
         }
         Ok(obs)
     }
@@ -597,7 +503,7 @@ impl StructuredStorage for SqliteStorage {
         project_id: &ProjectId,
         limit: usize,
     ) -> anyhow::Result<Vec<Observation>> {
-        let rows = sqlx::query("SELECT id FROM observations WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?")
+        let rows = sqlx::query("SELECT * FROM observations WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT ?")
             .bind(project_id)
             .bind(limit as i64)
             .fetch_all(&self.pool)
@@ -605,17 +511,14 @@ impl StructuredStorage for SqliteStorage {
 
         let mut obs = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(o) = self.get_observation(&id).await? {
-                obs.push(o);
-            }
+            obs.push(map_row_to_observation(&row)?);
         }
         Ok(obs)
     }
 
     async fn get_stale_reviews(&self, project_id: &ProjectId) -> anyhow::Result<Vec<ReviewItem>> {
         let threshold = Utc::now() - chrono::Duration::days(7);
-        let rows = sqlx::query("SELECT id FROM observations WHERE project_id = ? AND updated_at < ? AND lifecycle_state != ?")
+        let rows = sqlx::query("SELECT * FROM observations WHERE project_id = ? AND updated_at < ? AND lifecycle_state != ?")
             .bind(project_id)
             .bind(threshold.to_rfc3339())
             .bind(serde_json::to_string(&LifecycleState::Archived)?.trim_matches('"'))
@@ -624,14 +527,12 @@ impl StructuredStorage for SqliteStorage {
 
         let mut reviews = Vec::new();
         for row in rows {
-            let id: String = row.get("id");
-            if let Some(o) = self.get_observation(&id).await? {
-                reviews.push(ReviewItem {
-                    observation: o,
-                    days_stale: 7,
-                    review_after: Utc::now(),
-                });
-            }
+            let o = map_row_to_observation(&row)?;
+            reviews.push(ReviewItem {
+                observation: o,
+                days_stale: 7,
+                review_after: Utc::now(),
+            });
         }
         Ok(reviews)
     }
@@ -825,6 +726,107 @@ impl StructuredStorage for SqliteStorage {
             newest_observation,
         })
     }
+}
+
+fn map_row_to_project(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Project> {
+    let aliases: Vec<String> = serde_json::from_str(row.get("aliases"))?;
+    let created_at =
+        DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+    let updated_at =
+        DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
+
+    Ok(Project {
+        id: row.get("id"),
+        name: row.get("name"),
+        canonical_name: row.get("canonical_name"),
+        path: row.get("path"),
+        aliases,
+        created_at,
+        updated_at,
+        active: true,
+    })
+}
+
+fn map_row_to_session(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Session> {
+    let created_at =
+        DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+    let ended_at = row
+        .get::<Option<String>, _>("updated_at")
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+
+    Ok(Session {
+        id: row.get("id"),
+        project_id: row.get("project_id"),
+        started_at: created_at,
+        ended_at,
+        summary: None,
+        context_injected: false,
+        observation_ids: vec![],
+    })
+}
+
+fn map_row_to_observation(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Observation> {
+    let tags: Vec<String> = serde_json::from_str(row.get("tags"))?;
+    let metadata: std::collections::HashMap<String, serde_json::Value> =
+        serde_json::from_str(row.get("metadata"))?;
+    let memory_type: MemoryType =
+        serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("type")))?;
+    let scope: Scope =
+        serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("scope")))?;
+    let lifecycle: LifecycleState =
+        serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("lifecycle_state")))?;
+    let created_at =
+        DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+    let updated_at =
+        DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
+    let last_seen_at =
+        DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
+
+    let reviewed_at = row
+        .get::<Option<String>, _>("reviewed_at")
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+    let review_after = row
+        .get::<Option<String>, _>("review_after")
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+    let deleted_at = row
+        .get::<Option<String>, _>("deleted_at")
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
+    let deleted_mode = row
+        .get::<Option<String>, _>("deleted_mode")
+        .and_then(|s| serde_json::from_str(&format!("\"{}\"", s)).ok());
+    let related_observations: Vec<String> =
+        serde_json::from_str(row.get("related_observations"))?;
+
+    Ok(Observation {
+        id: row.get("id"),
+        project_id: row.get("project_id"),
+        session_id: row.get("session_id"),
+        title: row.get("title"),
+        content: row.get("content"),
+        tags,
+        metadata,
+        memory_type,
+        scope,
+        lifecycle,
+        topic_key: row.get("topic_key"),
+        hash: row.get("hash"),
+        revision_count: row.get::<i32, _>("revision_count") as u32,
+        duplicate_count: row.get::<i32, _>("duplicate_count") as u32,
+        created_at,
+        updated_at,
+        last_seen_at,
+        reviewed_at,
+        review_after,
+        deleted_at,
+        deleted_mode,
+        related_observations,
+        source_prompt: row.get("source_prompt"),
+        capture_prompt: row.get("capture_prompt"),
+    })
 }
 
 #[cfg(test)]

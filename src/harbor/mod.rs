@@ -108,11 +108,10 @@ impl HarborBackupManager {
                 .await
                 .context("Failed to open database for snapshot")?;
 
-            let query = Box::leak(
-                format!("VACUUM INTO '{}'", snapshot_path.to_string_lossy()).into_boxed_str(),
-            );
-            use sqlx::Executor;
-            pool.execute(&*query)
+            let safe_path = snapshot_path.to_string_lossy().replace("'", "''");
+            let query = format!("VACUUM INTO '{}'", safe_path);
+            sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
+                .execute(&pool)
                 .await
                 .context("Failed to create database snapshot via VACUUM INTO")?;
 

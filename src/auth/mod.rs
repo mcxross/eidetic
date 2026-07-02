@@ -195,6 +195,11 @@ impl AuthManager {
         }
     }
 
+    pub async fn active_rpc_url(&self) -> Option<String> {
+        let state = self.state.read().await;
+        state.sui_state.as_ref().and_then(|s| s.active_rpc.clone())
+    }
+
     pub async fn config_snapshot(&self) -> anyhow::Result<MemwalConfigSnapshot> {
         let state = self.state.read().await;
         let sui_state = state.sui_state.clone().unwrap_or_default();
