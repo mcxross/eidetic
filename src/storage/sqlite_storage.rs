@@ -436,7 +436,7 @@ impl StructuredStorage for SqliteStorage {
                AND o.project_id = ?
                AND o.deleted_at IS NULL
              ORDER BY rank
-             LIMIT ?"
+             LIMIT ?",
         )
         .bind(&safe_query)
         .bind(project_id)
@@ -730,10 +730,8 @@ impl StructuredStorage for SqliteStorage {
 
 fn map_row_to_project(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Project> {
     let aliases: Vec<String> = serde_json::from_str(row.get("aliases"))?;
-    let created_at =
-        DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-    let updated_at =
-        DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
+    let created_at = DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+    let updated_at = DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
 
     Ok(Project {
         id: row.get("id"),
@@ -748,8 +746,7 @@ fn map_row_to_project(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Project> 
 }
 
 fn map_row_to_session(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Session> {
-    let created_at =
-        DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+    let created_at = DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
     let ended_at = row
         .get::<Option<String>, _>("updated_at")
         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
@@ -772,16 +769,12 @@ fn map_row_to_observation(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Obser
         serde_json::from_str(row.get("metadata"))?;
     let memory_type: MemoryType =
         serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("type")))?;
-    let scope: Scope =
-        serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("scope")))?;
+    let scope: Scope = serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("scope")))?;
     let lifecycle: LifecycleState =
         serde_json::from_str(&format!("\"{}\"", row.get::<String, _>("lifecycle_state")))?;
-    let created_at =
-        DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
-    let updated_at =
-        DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
-    let last_seen_at =
-        DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
+    let created_at = DateTime::parse_from_rfc3339(row.get("created_at"))?.with_timezone(&Utc);
+    let updated_at = DateTime::parse_from_rfc3339(row.get("updated_at"))?.with_timezone(&Utc);
+    let last_seen_at = DateTime::parse_from_rfc3339(row.get("last_seen_at"))?.with_timezone(&Utc);
 
     let reviewed_at = row
         .get::<Option<String>, _>("reviewed_at")
@@ -798,8 +791,7 @@ fn map_row_to_observation(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Obser
     let deleted_mode = row
         .get::<Option<String>, _>("deleted_mode")
         .and_then(|s| serde_json::from_str(&format!("\"{}\"", s)).ok());
-    let related_observations: Vec<String> =
-        serde_json::from_str(row.get("related_observations"))?;
+    let related_observations: Vec<String> = serde_json::from_str(row.get("related_observations"))?;
 
     Ok(Observation {
         id: row.get("id"),
