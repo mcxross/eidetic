@@ -3270,7 +3270,7 @@ dependencies = [
 [[package]]
 name = "harbor-core"
 version = "0.1.0"
-source = "git+https://github.com/mcxross/harbor-rs.git?branch=main#71d86c511807270efedfc8c7fce507ac8e7ad81d"
+source = "git+https://github.com/mcxross/harbor-rs.git?rev=1d26bf8#1d26bf8d0d73a84bac6368d66aed445d9f3627bf"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3285,11 +3285,13 @@ dependencies = [
  "seal-sdk-rs",
  "serde",
  "serde_json",
+ "shared-crypto",
  "sui-crypto 0.3.0 (git+https://github.com/mystenlabs/sui-rust-sdk?rev=51ea346)",
  "sui-rpc 0.3.1 (git+https://github.com/mystenlabs/sui-rust-sdk?rev=51ea346)",
  "sui-sdk",
  "sui-sdk-types 0.3.1 (git+https://github.com/mystenlabs/sui-rust-sdk?rev=51ea346)",
  "sui-transaction-builder 0.3.1",
+ "sui-types",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
@@ -4716,7 +4718,7 @@ dependencies = [
 [[package]]
 name = "memwal-core"
 version = "0.1.0"
-source = "git+https://github.com/mcxross/memwal-rs.git?rev=06fd5c1#06fd5c1d8ab41b8802df4bf1a3465c42fe80e2e8"
+source = "git+https://github.com/mcxross/memwal-rs.git?rev=1670306#16703069db9cc86e8ba832ae314d22f89c94631f"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

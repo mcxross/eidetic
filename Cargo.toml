@@ -30,11 +30,11 @@ base64 = "0.22"
 ratatui = "0.29"
 crossterm = "0.28"
 toml_edit = "0.22"
-memwal-core = { package = "memwal-core", git = "https://github.com/mcxross/memwal-rs.git", rev = "06fd5c1" }
+memwal-core = { package = "memwal-core", git = "https://github.com/mcxross/memwal-rs.git", rev = "1670306" }
 allocative = "=0.3.4"
 self_update = { version = "0.44.0", features = ["archive-tar", "compression-flate2"] }
 openssl = { version = "0.10.81", features = ["vendored"] }
-harbor-core = { git = "https://github.com/mcxross/harbor-rs.git", branch = "main" }
+harbor-core = { git = "https://github.com/mcxross/harbor-rs.git", rev = "1d26bf8" }
 keyring = { version = "3", features = ["apple-native", "linux-native"] }
 rpassword = "5"
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "5f87e04bb21d295ef6b39375a06615d45cbb906c", version = "0.1.9" }
